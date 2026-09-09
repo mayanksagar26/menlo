@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # §7: "No network calls from the Rust core. Add a CI check that greps for HTTP
+  # clients in src-tauri and fails the build."
+  no-network:
+    name: no network in the core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse HTTP clients in src-tauri
+        run: |
+          set -euo pipefail
+          # Crate names that would put a socket in the Rust core. `tauri-plugin-http`
+          # is included deliberately: adding it would break the core promise.
+          banned='reqwest|hyper|ureq|isahc|surf|curl|attohttpc|awc|tauri-plugin-http'
+          if grep -nEi "^\s*($banned)\s*=" src-tauri/Cargo.toml; then
+            echo "::error::An HTTP client is declared in src-tauri/Cargo.toml. Menlo makes no network calls."
+            exit 1
+          fi
+          # And nothing may sneak in transitively as a direct dependency either.
+          if grep -nEi "\"($banned)\"" src-tauri/Cargo.toml; then
+            echo "::error::An HTTP client is referenced in src-tauri/Cargo.toml."
+            exit 1
+          fi
+          echo "No HTTP clients in the Rust core."
+
+  rust:
+    name: rust
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: fmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: test
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  frontend:
+    name: frontend
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  build:
+    name: tauri build
+    runs-on: macos-latest
+    needs: [rust, frontend, no-network]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npx tauri build --no-bundle

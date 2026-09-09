@@ -1,0 +1,200 @@
+@import "tailwindcss";
+
+/* ── Manila ────────────────────────────────────────────────────────────────
+   Light, warm, paper-like. Deliberately not another dark developer tool.
+   Typography and restraint carry it: no gradients, no glassmorphism, and
+   hairline rules rather than shadows for structure.
+   ──────────────────────────────────────────────────────────────────────── */
+
+@font-face {
+  font-family: "Geist";
+  src: url("./fonts/Geist-Variable.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --color-paper: #f5f0e6;
+  --color-manila: #ede4d3;
+  --color-manila-deep: #e2d5bc;
+  --color-ink: #1c2333;
+  --color-ink-soft: #4a5265;
+  --color-mute: #8a8175;
+  --color-oxblood: #8c3a2b;
+  --color-rule: rgba(28, 35, 51, 0.12);
+  --color-ok: #4f6f52;
+  --color-warn: #b07a2b;
+
+  --font-sans: "Geist", ui-sans-serif, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* The app is named after a monospace font. Use it with intent: every filename,
+     path, extension and confidence figure, and nothing else. */
+  --font-mono: "Menlo", ui-monospace, SFMono-Regular, monospace;
+
+  --radius-card: 6px;
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    /* This is a desktop app, not a web page. */
+    -webkit-user-select: none;
+    user-select: none;
+    overscroll-behavior: none;
+  }
+
+  /* Filenames and paths are the one thing a user will want to copy. */
+  .selectable,
+  input,
+  textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-oxblood);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(28, 35, 51, 0.16);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(28, 35, 51, 0.28);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Structure comes from hairlines, never box-shadows. */
+  .card {
+    background: var(--color-manila);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
+    background: transparent;
+    color: var(--color-ink);
+    white-space: nowrap;
+    transition: background-color 120ms var(--ease-out-quart);
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--color-manila-deep);
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* The single accent. One primary action per screen; that is the whole point. */
+  .btn-primary {
+    background: var(--color-oxblood);
+    border-color: var(--color-oxblood);
+    color: var(--color-paper);
+    font-weight: 500;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #7a3125;
+  }
+
+  .field {
+    width: 100%;
+    padding: 6px 9px;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
+    color: var(--color-ink);
+  }
+  .field::placeholder {
+    color: var(--color-mute);
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--color-oxblood);
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-feature-settings: "calt" 0;
+  }
+
+  /* ── The manila folder tab ──────────────────────────────────────────────
+     A small offset tab on the top-left edge. This one detail carries the
+     entire metaphor, so it is drawn precisely and then left alone.
+     ────────────────────────────────────────────────────────────────────── */
+  .folder {
+    position: relative;
+    background: var(--color-manila);
+    border: 1px solid var(--color-rule);
+    border-radius: 2px var(--radius-card) var(--radius-card) var(--radius-card);
+    margin-top: 9px;
+  }
+  .folder::before {
+    content: "";
+    position: absolute;
+    left: -1px;
+    top: -10px;
+    width: 42%;
+    max-width: 84px;
+    height: 10px;
+    background: var(--color-manila);
+    border: 1px solid var(--color-rule);
+    border-bottom: none;
+    /* The angled right edge of a real folder tab. */
+    border-radius: 3px 7px 0 0;
+    clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 100%, 0 100%);
+  }
+  .folder-active,
+  .folder-active::before {
+    background: var(--color-manila-deep);
+    border-color: rgba(140, 58, 43, 0.45);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
