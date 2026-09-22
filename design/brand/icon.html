@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  html,body{margin:0;background:transparent}
+  svg{display:block}
+</style>
+<!--
+  Menlo app icon, 1024×1024.
+
+  Apple's macOS 11+ proportions: an 824×824 body inset 100px on every side, corner
+  radius 185, so it sits correctly beside system icons in the Dock and in the DMG.
+
+  The container carries the glass — deep navy, a thin luminous rim, one blue and one
+  violet pool. The mark stays flat: three solid planes and a dark separation edge,
+  no gradient inside the logo. The group spans y 300–724, centred on the canvas.
+-->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="body">
+      <rect x="100" y="100" width="824" height="824" rx="185" ry="185"/>
+    </clipPath>
+
+    <!-- Container depth only: navy, lit from the top. -->
+    <linearGradient id="shell" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#1B2542"/>
+      <stop offset="0.55" stop-color="#101833"/>
+      <stop offset="1" stop-color="#080C1A"/>
+    </linearGradient>
+
+    <radialGradient id="poolViolet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#8E6BD6" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#8E6BD6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="poolBlue" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2F7DF7" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#2F7DF7" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- The rim: brightest along the top edge, fading by the bottom. -->
+    <linearGradient id="rim" x1="0" y1="0" x2="0.2" y2="1">
+      <stop offset="0" stop-color="#C9D6FF" stop-opacity="0.70"/>
+      <stop offset="0.45" stop-color="#8FA5E8" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#6E7FC4" stop-opacity="0.14"/>
+    </linearGradient>
+
+    <!-- The front panel, reused twice: once shifted up as the dark edge. -->
+    <path id="folder" d="
+      M 308 458 L 436 458 Q 452 458 463 469 L 505 513 Q 516 524 532 524
+      L 716 524 Q 756 524 756 564 L 756 684 Q 756 724 716 724
+      L 308 724 Q 268 724 268 684 L 268 498 Q 268 458 308 458 Z"/>
+  </defs>
+
+  <g clip-path="url(#body)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#shell)"/>
+    <ellipse cx="800" cy="210" rx="380" ry="330" fill="url(#poolViolet)"/>
+    <ellipse cx="230" cy="840" rx="400" ry="340" fill="url(#poolBlue)"/>
+  </g>
+
+  <!-- The mark: back to front, each sheet stepped up and to the right. -->
+  <g>
+    <path fill="#E8E9F3" d="
+      M 372 300 L 476 300 Q 492 300 503 311 L 539 347 Q 550 358 566 358
+      L 692 358 Q 732 358 732 398 L 732 520 L 332 520 L 332 340 Q 332 300 372 300 Z"/>
+    <path fill="#7C84D9" d="
+      M 340 380 L 452 380 Q 468 380 479 391 L 517 429 Q 528 440 544 440
+      L 704 440 Q 744 440 744 480 L 744 580 L 300 580 L 300 420 Q 300 380 340 380 Z"/>
+    <use href="#folder" fill="#090D1A" transform="translate(0,-14)"/>
+    <use href="#folder" fill="#2D7FF9"/>
+  </g>
+
+  <rect x="101.5" y="101.5" width="821" height="821" rx="184" ry="184"
+        fill="none" stroke="url(#rim)" stroke-width="3"/>
+</svg>

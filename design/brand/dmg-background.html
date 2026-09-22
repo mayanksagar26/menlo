@@ -1,0 +1,169 @@
+<!doctype html>
+<meta charset="utf-8">
+<!--
+  Menlo DMG background — 660×488 points of artwork.
+
+  Structured after the Third Street Bookmarks sheet, in Menlo's own theme: the
+  instruction *is* the artwork, set large across the top, with one hand-drawn arrow
+  threading the gap between the two icons. A disk image window is read once and then
+  never again, so there is nothing else on it.
+
+  Geometry is load-bearing. The icons sit at 162,304 and 490,304 per tauri.conf.json
+  and span y=240..368 at Finder's 128pt icon size, so nothing else may occupy that
+  band. The arrow lives in the 226..426 gap between them and stops short of both.
+
+  `windowSize` in tauri.conf.json is 660×516, not 660×488: Finder counts its own
+  28pt title bar in the window size, and the background is drawn in the content area
+  underneath it. Match the artwork to the window and the bottom 28pt gets clipped.
+
+  Regenerate with design/brand/build.sh.
+-->
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* Bundled with the app, so this renders identically offline. The italic is a real
+     cut, not a synthesised slant. */
+  @font-face {
+    font-family: "Instrument Sans";
+    font-style: normal;
+    font-weight: 100 700;
+    src: url("../../node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2") format("woff2-variations");
+  }
+  @font-face {
+    font-family: "Instrument Sans";
+    font-style: italic;
+    font-weight: 100 700;
+    src: url("../../node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-italic.woff2") format("woff2-variations");
+  }
+
+  html, body { background: transparent; }
+
+  .dmg {
+    position: relative;
+    width: 660px;
+    height: 488px;
+    overflow: hidden;
+    background: linear-gradient(168deg, #131B35 0%, #0C1226 48%, #070B18 100%);
+    font-family: "Instrument Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #EDEFF6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Ambient light: blue low-left, indigo high-right, a violet wash between them.
+     Wide and weak — atmosphere, not glow. */
+  .pool { position: absolute; border-radius: 50%; }
+  .pool-blue {
+    left: -16%; top: 40%; width: 64%; height: 86%;
+    background: radial-gradient(circle, rgba(47,125,247,0.24) 0%, rgba(47,125,247,0) 68%);
+  }
+  .pool-indigo {
+    right: -14%; top: -26%; width: 62%; height: 88%;
+    background: radial-gradient(circle, rgba(108,116,220,0.26) 0%, rgba(108,116,220,0) 70%);
+  }
+  .pool-violet {
+    left: 32%; bottom: -40%; width: 48%; height: 68%;
+    background: radial-gradient(circle, rgba(142,107,214,0.16) 0%, rgba(142,107,214,0) 72%);
+  }
+
+  .vignette {
+    position: absolute; inset: 0;
+    box-shadow: inset 0 0 80px rgba(4,6,14,0.55);
+  }
+
+  /* The glass rim. Four edges rather than a border, so the top can be lit on its own
+     the way a glass surface catches light from above. */
+  .rim { position: absolute; inset: 0; }
+  .rim i { position: absolute; background: rgba(176,194,247,0.16); }
+  .rim .top {
+    left: 0; right: 0; top: 0; height: 1px;
+    background: linear-gradient(90deg,
+      rgba(176,194,247,0.10), rgba(226,233,255,0.40) 50%, rgba(176,194,247,0.10));
+  }
+  .rim .bottom { left: 0; right: 0; bottom: 0; height: 1px; opacity: 0.55; }
+  .rim .left {
+    top: 0; bottom: 0; left: 0; width: 1px;
+    background: linear-gradient(180deg, rgba(200,214,255,0.30), rgba(176,194,247,0.07));
+  }
+  .rim .right {
+    top: 0; bottom: 0; right: 0; width: 1px;
+    background: linear-gradient(180deg, rgba(200,214,255,0.30), rgba(176,194,247,0.07));
+  }
+
+  .headline {
+    position: absolute;
+    top: 64px; left: 54px; right: 54px;
+    text-align: center;
+    font-size: 39px;
+    font-weight: 400;
+    line-height: 1.22;
+    letter-spacing: -0.026em;
+    color: #F4F6FC;
+  }
+
+  /* One word carries the whole instruction, so it gets the italic. */
+  .headline em { font-style: italic; font-weight: 400; }
+
+  .sub {
+    position: absolute;
+    top: 186px; left: 0; right: 0;
+    text-align: center;
+    font-size: 12.5px;
+    letter-spacing: -0.005em;
+    color: rgba(226, 231, 245, 0.52);
+  }
+
+  /* Under each icon: a pool of light, not a bordered plate. A plate would put a
+     second squircle around the app icon, which already has one of its own. */
+  .pad {
+    position: absolute;
+    width: 196px; height: 196px;
+    margin: -98px 0 0 -98px;
+    border-radius: 50%;
+    background: radial-gradient(circle,
+      rgba(198,214,255,0.075) 0%, rgba(198,214,255,0.030) 46%, rgba(198,214,255,0) 70%);
+  }
+
+  /* The Applications folder is Finder's own icon and cannot be restyled from here,
+     so it gets a faint translucent plate to settle it into the same glass. */
+  .plate {
+    position: absolute;
+    width: 150px; height: 150px;
+    margin: -75px 0 0 -75px;
+    border-radius: 33px;
+    background: rgba(255,255,255,0.032);
+    box-shadow: inset 0 1px 0 rgba(216,226,255,0.11);
+  }
+
+  /* Hand-drawn rather than geometric: a ruled line next to this much open space
+     reads as a diagram, and the sheet is not a diagram. */
+  .arrow { position: absolute; left: 282px; top: 281px; width: 96px; height: 46px; }
+</style>
+
+<div class="dmg">
+  <div class="pool pool-blue"></div>
+  <div class="pool pool-indigo"></div>
+  <div class="pool pool-violet"></div>
+  <div class="vignette"></div>
+  <div class="rim"><i class="top"></i><i class="bottom"></i><i class="left"></i><i class="right"></i></div>
+
+  <div class="headline">To install, <em>drag</em> Menlo<br>to Applications</div>
+  <div class="sub">A calmer place for your files.</div>
+
+  <!-- Centres match dmg.appPosition and dmg.applicationFolderPosition. -->
+  <div class="pad" style="left:162px; top:304px"></div>
+  <div class="pad" style="left:490px; top:304px"></div>
+  <div class="plate" style="left:490px; top:304px"></div>
+
+  <svg class="arrow" viewBox="0 0 96 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- One stroke: a shallow dip, a loop that crosses its own tail, then away to the
+         upper right. Drawn flat and wide — a tall arc reads as a swoosh rather than a
+         gesture. -->
+    <path
+      d="M3 6 C 6 26, 22 38, 40 34 C 52 31, 54 18, 46 16 C 38 14, 34 26, 46 32 C 60 39, 76 32, 88 16"
+      stroke="#7C9DF2" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Arrowhead as its own two strokes, so it keeps the same hand as the sweep. -->
+    <path
+      d="M76 10 L90 13 L87 27"
+      stroke="#7C9DF2" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</div>

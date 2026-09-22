@@ -27,7 +27,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "category": "Utility",
     "shortDescription": "Local-first file organiser",
     "longDescription": "Menlo files the contents of a cluttered folder into destinations you define, using natural-language rules and whichever agentic CLI you already have installed. No API key, nothing leaves the device.",
@@ -40,7 +43,23 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "minimumSystemVersion": "11.0"
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "-",
+      "dmg": {
+        "background": "dmg-background.tiff",
+        "windowSize": {
+          "width": 660,
+          "height": 516
+        },
+        "appPosition": {
+          "x": 162,
+          "y": 304
+        },
+        "applicationFolderPosition": {
+          "x": 490,
+          "y": 304
+        }
+      }
     }
   }
 }
