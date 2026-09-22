@@ -1,33 +1,67 @@
-/** Typed wrappers over the Tauri command layer in `src-tauri/src/lib.rs`. */
+/**
+ * Typed wrappers over the Tauri command layer in `src-tauri/src/lib.rs`.
+ *
+ * Command *arguments* are camelCase here — Tauri renames them from Rust's snake_case —
+ * while the fields of any struct passed or returned stay snake_case, because serde
+ * owns those. `parentKey` the argument; `parent_key` the field.
+ */
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import type {
-  Batch,
-  BatchSummary,
-  Config,
-  Destination,
+  AppView,
   ExecuteOutcome,
+  FolderSet,
+  FolderSuggestion,
   Plan,
-  RevertOutcome,
-  RuleSet,
-  SetupState,
+  Progress,
+  RunView,
+  Settings,
 } from "./types";
 
-export const getSetupState = () => invoke<SetupState>("get_setup_state");
-export const saveConfig = (config: Config) => invoke<Config>("save_config", { config });
-export const ensureDestination = (destination: Destination) =>
-  invoke<void>("ensure_destination", { destination });
+export const getState = () => invoke<AppView>("get_state");
+export const saveSettings = (settings: Settings) => invoke<AppView>("save_settings", { settings });
 
-export const scanAndPlan = () => invoke<Plan>("scan_and_plan");
+export const addSource = (path: string) => invoke<AppView>("add_source", { path });
+export const removeSource = (path: string) => invoke<AppView>("remove_source", { path });
+
+export const addDestination = (path: string, parentKey?: string | null, key?: string | null) =>
+  invoke<AppView>("add_destination", { path, parentKey: parentKey ?? null, key: key ?? null });
+export const createSubfolder = (parentKey: string, name: string) =>
+  invoke<AppView>("create_subfolder", { parentKey, name });
+export const removeDestination = (key: string) => invoke<AppView>("remove_destination", { key });
+export const suggestFolders = (parentKey?: string | null) =>
+  invoke<FolderSuggestion[]>("suggest_folders", { parentKey: parentKey ?? null });
+
+export const saveFolderSet = (set: FolderSet) => invoke<AppView>("save_folder_set", { set });
+export const deleteFolderSet = (id: string) => invoke<AppView>("delete_folder_set", { id });
+
+export const addFolderRule = (destinationKey: string, text: string) =>
+  invoke<AppView>("add_folder_rule", { destinationKey, text });
+export const removeFolderRule = (id: string) => invoke<AppView>("remove_folder_rule", { id });
+
+export const planRun = (sources: string[], destinations: string[], setLabel: string | null) =>
+  invoke<Plan>("plan_run", { sources, destinations, setLabel });
 export const applyPlan = (plan: Plan) => invoke<ExecuteOutcome>("apply_plan", { plan });
+export const stopRun = () => invoke<void>("stop_run");
 
-export const listBatches = () => invoke<BatchSummary[]>("list_batches");
-export const getBatch = (batchId: string) => invoke<Batch>("get_batch", { batchId });
-export const revertBatch = (batchId: string) => invoke<RevertOutcome>("revert_batch", { batchId });
+export const getRun = (batchId: string) => invoke<RunView>("get_run", { batchId });
+export const revertRun = (batchId: string) => invoke<RunView>("revert_run", { batchId });
+export const revertRunGroup = (batchId: string, key: string | null) =>
+  invoke<RunView>("revert_run_group", { batchId, key });
 
-export const getRules = () => invoke<RuleSet>("get_rules");
-export const addRule = (matchExpr: string, destinationKey: string) =>
-  invoke<RuleSet>("add_rule", { matchExpr, destinationKey });
-export const deleteRule = (ruleId: string) => invoke<RuleSet>("delete_rule", { ruleId });
-export const setRuleEnabled = (ruleId: string, enabled: boolean) =>
-  invoke<RuleSet>("set_rule_enabled", { ruleId, enabled });
+/** One event per file while a plan is applied. */
+export const onProgress = (cb: (p: Progress) => void): Promise<UnlistenFn> =>
+  listen<Progress>("menlo://progress", (e) => cb(e.payload));
+
+/**
+ * The system folder picker. Resolves to the chosen folders, or none if cancelled.
+ * `defaultPath` opens it somewhere useful — inside a folder, to pick a subfolder; its
+ * own New Folder button covers making one.
+ */
+export async function pickFolders(title: string, multiple = true, defaultPath?: string): Promise<string[]> {
+  const picked = await open({ directory: true, multiple, title, defaultPath });
+  if (picked === null) return [];
+  return Array.isArray(picked) ? picked : [picked];
+}

@@ -36,6 +36,8 @@ pub struct ManifestEntry {
 pub struct ScanItem {
     pub entry: ManifestEntry,
     pub path: PathBuf,
+    /// The source folder this came from. Private for the same reason `path` is.
+    pub source: PathBuf,
 }
 
 /// Why a scanned path was left out, so the UI can be honest about the difference
@@ -62,8 +64,10 @@ pub struct Skipped {
 pub struct Scan {
     pub items: Vec<ScanItem>,
     pub skipped: Vec<Skipped>,
-    /// True when the folder held more eligible files than §7's 500-file cap.
+    /// True when the folders held more eligible files than §7's 500-file cap.
     pub truncated: bool,
+    /// The folders that were scanned, in the order they were scanned.
+    pub sources: Vec<PathBuf>,
 }
 
 impl Scan {
@@ -89,18 +93,61 @@ fn is_partial(name: &str, ext: &str) -> bool {
         || name.ends_with(".download")
 }
 
-/// Scan a single folder, non-recursively.
-///
-/// v1 deliberately ignores dotfiles, `.DS_Store`, partial downloads, symlinks and
-/// directories (§6.2). Subfolders are left entirely alone: a user who has already
-/// organised something into a folder does not want it re-organised.
+/// Scan a single folder, non-recursively. See [`scan_all`].
 pub fn scan(dir: &Path) -> Result<Scan> {
-    crate::safety::assert_operable(dir)?;
+    scan_all(&[dir.to_path_buf()], false)
+}
+
+/// Scan several folders, each non-recursively, into one manifest.
+///
+/// v1 deliberately ignores `.DS_Store`, partial downloads, symlinks and directories
+/// (§6.2), and dotfiles unless `include_hidden` is set. Subfolders are left entirely
+/// alone: a user who has already organised something into a folder does not want it
+/// re-organised.
+///
+/// Ids run across every folder (`f_000` …), so a plan can refer to any file by id
+/// alone. §7's batch cap applies to the whole scan, not per folder. A folder listed
+/// twice is scanned once.
+pub fn scan_all(dirs: &[PathBuf], include_hidden: bool) -> Result<Scan> {
+    let mut sources: Vec<PathBuf> = Vec::new();
+    for d in dirs {
+        if !sources.contains(d) {
+            sources.push(d.clone());
+        }
+    }
+    for d in &sources {
+        crate::safety::assert_operable(d)?;
+    }
 
     let mut items = Vec::new();
     let mut skipped = Vec::new();
     let mut truncated = false;
 
+    for dir in &sources {
+        scan_one(
+            dir,
+            include_hidden,
+            &mut items,
+            &mut skipped,
+            &mut truncated,
+        );
+    }
+
+    Ok(Scan {
+        items,
+        skipped,
+        truncated,
+        sources,
+    })
+}
+
+fn scan_one(
+    dir: &Path,
+    include_hidden: bool,
+    items: &mut Vec<ScanItem>,
+    skipped: &mut Vec<Skipped>,
+    truncated: &mut bool,
+) {
     // `walkdir` with depth 1 rather than `read_dir` so the recursive Phase 3 sweep is a
     // one-line change, and so we get consistent symlink handling for free.
     let walker = walkdir::WalkDir::new(dir)
@@ -139,7 +186,7 @@ pub fn scan(dir: &Path) -> Result<Scan> {
             });
             continue;
         }
-        if name.starts_with('.') {
+        if name.starts_with('.') && !include_hidden {
             skipped.push(Skipped {
                 name,
                 reason: SkipReason::Dotfile,
@@ -169,7 +216,7 @@ pub fn scan(dir: &Path) -> Result<Scan> {
         };
 
         if items.len() >= MAX_BATCH {
-            truncated = true;
+            *truncated = true;
             skipped.push(Skipped {
                 name,
                 reason: SkipReason::BatchCapReached,
@@ -192,14 +239,23 @@ pub fn scan(dir: &Path) -> Result<Scan> {
             excerpt: None, // Phase 2
         };
 
-        items.push(ScanItem { entry, path });
+        items.push(ScanItem {
+            entry,
+            path,
+            source: dir.to_path_buf(),
+        });
     }
+}
 
-    Ok(Scan {
-        items,
-        skipped,
-        truncated,
-    })
+/// How many files a scan of `dir` would consider, without building a manifest. Cheap
+/// enough for the home screen to call for every source on every visit.
+pub fn count_eligible(dir: &Path, include_hidden: bool) -> usize {
+    if crate::safety::assert_operable(dir).is_err() {
+        return 0;
+    }
+    scan_all(&[dir.to_path_buf()], include_hidden)
+        .map(|s| s.items.len())
+        .unwrap_or(0)
 }
 
 /// Falls back to the epoch when a filesystem does not record the timestamp, rather
@@ -370,5 +426,79 @@ mod tests {
     #[test]
     fn refuses_to_scan_a_protected_folder() {
         assert!(scan(Path::new("/System/Library")).is_err());
+    }
+
+    #[test]
+    fn scans_many_sources_with_ids_that_run_across_all_of_them() {
+        let a = TempDir::new();
+        let b = TempDir::new();
+        a.write("one.pdf", b"x");
+        a.write("two.pdf", b"x");
+        b.write("three.pdf", b"x");
+
+        let scan = scan_all(&[a.path().to_path_buf(), b.path().to_path_buf()], false).unwrap();
+        let got: Vec<_> = scan
+            .items
+            .iter()
+            .map(|i| (i.entry.id.as_str(), i.entry.name.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("f_000", "one.pdf"),
+                ("f_001", "two.pdf"),
+                ("f_002", "three.pdf")
+            ]
+        );
+        // Each item knows its own folder, which is what the Move stage's lanes use.
+        assert_eq!(scan.items[2].source, b.path());
+    }
+
+    #[test]
+    fn a_source_listed_twice_is_scanned_once() {
+        let a = TempDir::new();
+        a.write("one.pdf", b"x");
+        let dirs = [a.path().to_path_buf(), a.path().to_path_buf()];
+        let scan = scan_all(&dirs, false).unwrap();
+        assert_eq!(scan.items.len(), 1);
+        assert_eq!(scan.sources.len(), 1);
+    }
+
+    #[test]
+    fn the_batch_cap_spans_every_source() {
+        let a = TempDir::new();
+        let b = TempDir::new();
+        for n in 0..MAX_BATCH - 5 {
+            a.write(format!("a_{n:04}.txt"), b"x");
+        }
+        for n in 0..20 {
+            b.write(format!("b_{n:04}.txt"), b"x");
+        }
+        let scan = scan_all(&[a.path().to_path_buf(), b.path().to_path_buf()], false).unwrap();
+        assert_eq!(scan.items.len(), MAX_BATCH);
+        assert!(scan.truncated);
+    }
+
+    #[test]
+    fn hidden_files_are_opt_in_but_system_files_never_are() {
+        let a = TempDir::new();
+        a.write(".notes.txt", b"x");
+        a.write(".DS_Store", b"x");
+        a.write("seen.txt", b"x");
+
+        let off = scan_all(&[a.path().to_path_buf()], false).unwrap();
+        assert_eq!(off.items.len(), 1);
+
+        let on = scan_all(&[a.path().to_path_buf()], true).unwrap();
+        let names: Vec<_> = on.items.iter().map(|i| i.entry.name.as_str()).collect();
+        assert_eq!(names, vec![".notes.txt", "seen.txt"]);
+    }
+
+    #[test]
+    fn one_protected_source_refuses_the_whole_scan() {
+        // Better to say so than to quietly scan the other folders and look complete.
+        let a = TempDir::new();
+        let dirs = [a.path().to_path_buf(), PathBuf::from("/System/Library")];
+        assert!(scan_all(&dirs, false).is_err());
     }
 }

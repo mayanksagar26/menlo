@@ -6,8 +6,6 @@ dist/
 /src-tauri/target/
 /src-tauri/gen/
 
-# Fonts copied out of the `geist` package by scripts/sync-fonts.mjs
-/src/styles/fonts/
 
 # Test + coverage
 coverage/
@@ -23,3 +21,4 @@ coverage/
 
 # Playwright
 /e2e/.auth/
+.gstack/

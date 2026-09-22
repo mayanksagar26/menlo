@@ -19,13 +19,23 @@ pub enum Strategy {
     Rename,
     /// Across volumes: copy, verify the hash, then delete the source.
     CopyVerifyDelete,
+    /// A duplicate sent to the Trash. Recorded as a move so the hash-verified revert
+    /// below brings it back with no special case — the Trash is just somewhere a file
+    /// went.
+    Trash,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchHeader {
     pub batch_id: String,
     pub started_at: DateTime<Utc>,
+    /// The first source. Journals from before multi-source support carry only this.
     pub source: PathBuf,
+    #[serde(default)]
+    pub sources: Vec<PathBuf>,
+    /// The folder set this run was made from, for the Runs page ("Everyday · …").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_label: Option<String>,
     /// How many moves this batch intended, so a truncated file is detectable.
     pub planned: usize,
     pub app_version: String,
@@ -54,6 +64,15 @@ pub struct FailureRecord {
     pub at: DateTime<Utc>,
 }
 
+/// A file the user chose to leave where it was — a duplicate they kept.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeptRecord {
+    pub entry_id: String,
+    pub from: PathBuf,
+    pub reason: String,
+    pub at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RevertRecord {
     pub entry_id: String,
@@ -74,6 +93,7 @@ pub enum Line {
     Revert(RevertRecord),
     /// Written when a revert could not restore a file, with why.
     RevertFailure(FailureRecord),
+    Kept(KeptRecord),
 }
 
 /// A batch as reconstructed from its JSONL file.
@@ -84,6 +104,8 @@ pub struct Batch {
     pub failures: Vec<FailureRecord>,
     pub reverts: Vec<RevertRecord>,
     pub revert_failures: Vec<FailureRecord>,
+    #[serde(default)]
+    pub kept: Vec<KeptRecord>,
 }
 
 impl Batch {
@@ -100,13 +122,17 @@ impl Batch {
     }
 }
 
-/// Summary row for the History screen.
+/// Summary row for the Runs page.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchSummary {
     pub batch_id: String,
     pub started_at: DateTime<Utc>,
     pub source: PathBuf,
+    pub set_label: Option<String>,
+    /// Filed into a destination. Excludes duplicates sent to the Trash.
     pub moved: usize,
+    pub trashed: usize,
+    pub kept: usize,
     pub failed: usize,
     pub reverted: usize,
     pub fully_reverted: bool,
@@ -114,11 +140,19 @@ pub struct BatchSummary {
 
 impl From<&Batch> for BatchSummary {
     fn from(b: &Batch) -> Self {
+        let trashed = b
+            .moves
+            .iter()
+            .filter(|m| m.strategy == Strategy::Trash)
+            .count();
         BatchSummary {
             batch_id: b.header.batch_id.clone(),
             started_at: b.header.started_at,
             source: b.header.source.clone(),
-            moved: b.moves.len(),
+            set_label: b.header.set_label.clone(),
+            moved: b.moves.len() - trashed,
+            trashed,
+            kept: b.kept.len(),
             failed: b.failures.len(),
             reverted: b.reverts.len(),
             fully_reverted: b.fully_reverted(),
@@ -199,6 +233,7 @@ fn parse_batch(text: &str) -> Result<Batch> {
     let mut failures = Vec::new();
     let mut reverts = Vec::new();
     let mut revert_failures = Vec::new();
+    let mut kept = Vec::new();
 
     for raw in text.lines() {
         let raw = raw.trim();
@@ -215,6 +250,7 @@ fn parse_batch(text: &str) -> Result<Batch> {
             Line::Failure(f) => failures.push(f),
             Line::Revert(r) => reverts.push(r),
             Line::RevertFailure(f) => revert_failures.push(f),
+            Line::Kept(k) => kept.push(k),
         }
     }
 
@@ -225,6 +261,7 @@ fn parse_batch(text: &str) -> Result<Batch> {
         failures,
         reverts,
         revert_failures,
+        kept,
     })
 }
 
@@ -269,13 +306,22 @@ pub struct RevertOutcome {
 /// over whatever now sits at the original path could destroy the newer work. Those are
 /// reported and left in place rather than moved.
 pub fn revert_batch(batch_id: &str) -> Result<RevertOutcome> {
+    revert_batch_where(batch_id, |_| true)
+}
+
+/// Put back only the moves `keep` selects — one destination of a run, say, or just
+/// the duplicates it sent to the Trash. Same hash checks as a whole-batch revert.
+pub fn revert_batch_where(
+    batch_id: &str,
+    keep: impl Fn(&MoveRecord) -> bool,
+) -> Result<RevertOutcome> {
     let batch = read_batch(batch_id)?;
     let mut journal = Journal::reopen(batch_id)?;
     let mut restored = 0usize;
     let mut failed: Vec<FailureRecord> = Vec::new();
 
     // Reverse order, so a rename-chain within one batch unwinds cleanly.
-    for record in batch.outstanding().into_iter().rev() {
+    for record in batch.outstanding().into_iter().filter(|m| keep(m)).rev() {
         match revert_one(record) {
             Ok(to) => {
                 journal.append(&Line::Revert(RevertRecord {
@@ -357,6 +403,8 @@ mod tests {
             batch_id: "b1".into(),
             started_at: Utc::now(),
             source: PathBuf::from("/tmp/dl"),
+            sources: vec![PathBuf::from("/tmp/dl")],
+            set_label: Some("Everyday".into()),
             planned: 2,
             app_version: "test".into(),
         }
@@ -421,6 +469,34 @@ mod tests {
         text.push_str("\n{\"type\":\"move\",\"entry_id\":\"f_00");
         let b = parse_batch(&text).unwrap();
         assert_eq!(b.moves.len(), 1);
+    }
+
+    #[test]
+    fn a_summary_separates_filed_trashed_and_kept() {
+        let mut trashed = mv("f_001");
+        trashed.strategy = Strategy::Trash;
+        let text = jsonl(&[
+            Line::Header(header()),
+            Line::Move(mv("f_000")),
+            Line::Move(trashed),
+            Line::Kept(KeptRecord {
+                entry_id: "f_002".into(),
+                from: PathBuf::from("/tmp/dl/f_002"),
+                reason: "duplicate kept".into(),
+                at: Utc::now(),
+            }),
+        ]);
+        let s = BatchSummary::from(&parse_batch(&text).unwrap());
+        assert_eq!((s.moved, s.trashed, s.kept), (1, 1, 1));
+        assert_eq!(s.set_label.as_deref(), Some("Everyday"));
+    }
+
+    #[test]
+    fn a_journal_from_before_multi_source_still_reads() {
+        let old = r#"{"type":"header","batch_id":"b0","started_at":"2026-01-01T00:00:00Z","source":"/tmp/dl","planned":1,"app_version":"0.1.0"}"#;
+        let b = parse_batch(old).unwrap();
+        assert!(b.header.sources.is_empty());
+        assert!(b.kept.is_empty());
     }
 
     #[test]

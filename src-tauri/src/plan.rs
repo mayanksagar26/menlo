@@ -55,6 +55,40 @@ pub struct RawPlanEntry {
     pub suggest_rule: Option<SuggestRule>,
 }
 
+/// How a file relates to what is already at its destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DuplicateKind {
+    /// Byte for byte the same (SHA-256). The only kind that may be sent to the Trash.
+    Identical,
+    /// Same name, different contents. Not a duplicate at all — moving it saves it as
+    /// `name (2)` — but worth saying out loud before it happens.
+    SameName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Duplicate {
+    pub kind: DuplicateKind,
+    /// Basename of the file it matched. Never a path.
+    pub existing_name: String,
+    /// When the match is another file in this same batch — a screenshot sitting in
+    /// both Downloads and Desktop — the id of the copy that will be kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub same_as_entry: Option<String>,
+}
+
+/// What the user decided about a duplicate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DuplicateChoice {
+    /// Leave it where it is. Nothing is moved.
+    Keep,
+    /// Send the source copy to the Trash, journalled. Identical files only.
+    Trash,
+    /// Move it anyway; a name clash gets a ` (2)` suffix.
+    MoveAnyway,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanEntry {
     pub id: String,
@@ -74,6 +108,13 @@ pub struct PlanEntry {
     /// True once the user changes the destination, which suppresses learning from it
     /// (task 12 persists only the rules the user *didn't* override).
     pub overridden: bool,
+    /// Set by the duplicate check, and recomputed on apply — the copy of this field
+    /// that comes back from the frontend is never trusted.
+    #[serde(default)]
+    pub duplicate: Option<Duplicate>,
+    /// The user's decision about `duplicate`. `None` follows the Duplicates setting.
+    #[serde(default)]
+    pub on_duplicate: Option<DuplicateChoice>,
 }
 
 impl PlanEntry {
@@ -86,7 +127,12 @@ impl PlanEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Plan {
     pub batch_id: String,
+    /// The first scanned folder. Kept because journals written before multi-source
+    /// support carry only this; new code reads `sources`.
     pub source: std::path::PathBuf,
+    /// Every folder this plan was built from.
+    #[serde(default)]
+    pub sources: Vec<std::path::PathBuf>,
     pub created_at: DateTime<Utc>,
     pub entries: Vec<PlanEntry>,
     /// Files the scan declined to consider, with reasons (§ honesty about counts).
@@ -97,10 +143,11 @@ pub struct Plan {
 }
 
 impl Plan {
-    pub fn new(source: std::path::PathBuf, entries: Vec<PlanEntry>, scan: &Scan) -> Self {
+    pub fn new(entries: Vec<PlanEntry>, scan: &Scan) -> Self {
         Plan {
             batch_id: uuid::Uuid::new_v4().to_string(),
-            source,
+            source: scan.sources.first().cloned().unwrap_or_default(),
+            sources: scan.sources.clone(),
             created_at: Utc::now(),
             entries,
             skipped: scan.skipped.clone(),

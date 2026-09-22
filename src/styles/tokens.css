@@ -1,39 +1,62 @@
 @import "tailwindcss";
 
-/* ── Manila ────────────────────────────────────────────────────────────────
-   Light, warm, paper-like. Deliberately not another dark developer tool.
-   Typography and restraint carry it: no gradients, no glassmorphism, and
-   hairline rules rather than shadows for structure.
+/* ── Menlo glass ───────────────────────────────────────────────────────────
+   Dark, lit from behind. Every surface is the same recipe — a translucent
+   fill, a 1px hairline, an inset highlight along the top edge — over three
+   slow-moving light pools. Depth comes from blur and rim light, never from
+   borders that shout or from drop shadows on flat cards.
+
+   Values here are the handoff's (docs/design/HANDOFF.md §Design tokens); when
+   the two disagree the handoff wins.
    ──────────────────────────────────────────────────────────────────────── */
 
-@font-face {
-  font-family: "Geist";
-  src: url("./fonts/Geist-Variable.woff2") format("woff2-variations");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
 @theme {
-  --color-paper: #f5f0e6;
-  --color-manila: #ede4d3;
-  --color-manila-deep: #e2d5bc;
-  --color-ink: #1c2333;
-  --color-ink-soft: #4a5265;
-  --color-mute: #8a8175;
-  --color-oxblood: #8c3a2b;
-  --color-rule: rgba(28, 35, 51, 0.12);
-  --color-ok: #4f6f52;
-  --color-warn: #b07a2b;
+  /* Surfaces */
+  --color-desk: #060709;
+  --color-sheet: rgba(18, 20, 26, 0.94);
+  --color-scrim: rgba(6, 7, 9, 0.68);
 
-  --font-sans: "Geist", ui-sans-serif, -apple-system, BlinkMacSystemFont, sans-serif;
-  /* The app is named after a monospace font. Use it with intent: every filename,
-     path, extension and confidence figure, and nothing else. */
-  --font-mono: "Menlo", ui-monospace, SFMono-Regular, monospace;
+  /* Ink. The numbered steps are opacities of the same near-white, so text
+     sits *in* the glass rather than on top of it. */
+  --color-ink: #f7f8fa;
+  --color-ink-body: #edeef1;
+  --color-ink-86: rgba(237, 238, 241, 0.86);
+  --color-ink-70: rgba(237, 238, 241, 0.7);
+  --color-ink-66: rgba(237, 238, 241, 0.66);
+  --color-ink-60: rgba(237, 238, 241, 0.6);
 
-  --radius-card: 6px;
+  /* Glass fills, in the order they stack: resting, hovered, selected. */
+  --color-glass: rgba(255, 255, 255, 0.05);
+  --color-glass-hi: rgba(255, 255, 255, 0.08);
+  --color-glass-sel: rgba(255, 255, 255, 0.14);
 
-  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  /* Hairlines */
+  --color-hair: rgba(255, 255, 255, 0.1);
+  --color-hair-hi: rgba(255, 255, 255, 0.16);
+  --color-hair-rim: rgba(255, 255, 255, 0.22);
+
+  /* The light pools behind everything */
+  --color-pool-blue: rgba(96, 132, 214, 0.3);
+  --color-pool-magenta: rgba(196, 120, 196, 0.2);
+  --color-pool-teal: rgba(88, 176, 168, 0.18);
+
+  --font-sans: "Instrument Sans Variable", "Instrument Sans", "SF Pro Text",
+    -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --radius-window: 18px;
+  --radius-sheet: 20px;
+  --radius-card: 14px;
+  --radius-row: 11px;
+  --radius-pill: 999px;
+
+  /* The house curve. Everything that moves in the UI uses it; the stage track
+     just rides it for longer. */
+  --ease-menlo: cubic-bezier(0.32, 0.72, 0.16, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+
+  --blur-glass: 26px;
+  --blur-bar: 34px;
+  --blur-pop: 48px;
 }
 
 @layer base {
@@ -44,19 +67,20 @@
   }
 
   body {
-    background: var(--color-paper);
-    color: var(--color-ink);
+    margin: 0;
+    background: var(--color-desk);
+    color: var(--color-ink-body);
     font-family: var(--font-sans);
     font-size: 13px;
-    line-height: 1.5;
+    font-feature-settings: "tnum" 1;
     -webkit-font-smoothing: antialiased;
-    /* This is a desktop app, not a web page. */
+    /* A desktop window, not a web page. */
     -webkit-user-select: none;
     user-select: none;
     overscroll-behavior: none;
   }
 
-  /* Filenames and paths are the one thing a user will want to copy. */
+  /* Filenames and paths are the one thing worth copying out. */
   .selectable,
   input,
   textarea {
@@ -67,27 +91,32 @@
   button {
     font: inherit;
     color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: default;
+  }
+
+  input {
+    font: inherit;
+    color: inherit;
+  }
+  input::placeholder {
+    color: rgba(237, 238, 241, 0.62);
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-oxblood);
+    outline: 1px solid rgba(247, 248, 250, 0.7);
     outline-offset: 2px;
-    border-radius: 2px;
   }
 
   ::-webkit-scrollbar {
-    width: 11px;
-    height: 11px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(28, 35, 51, 0.16);
-    border: 3px solid transparent;
-    background-clip: content-box;
-    border-radius: 999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(28, 35, 51, 0.28);
-    background-clip: content-box;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
@@ -95,97 +124,279 @@
 }
 
 @layer components {
-  /* Structure comes from hairlines, never box-shadows. */
-  .card {
-    background: var(--color-manila);
-    border: 1px solid var(--color-rule);
-    border-radius: var(--radius-card);
+  /* ── The one glass recipe ───────────────────────────────────────────────
+     Fill + hairline + rim. Override the fill and blur with the `--glass-*`
+     custom properties rather than by stacking another background utility,
+     so the rim highlight stays put.
+     ──────────────────────────────────────────────────────────────────── */
+  .glass {
+    background: var(--glass-fill, var(--color-glass));
+    border: 1px solid var(--glass-hair, var(--color-hair));
+    box-shadow: inset 0 1px 0 var(--glass-rim, rgba(255, 255, 255, 0.14));
+    backdrop-filter: blur(var(--glass-blur, var(--blur-glass))) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--glass-blur, var(--blur-glass))) saturate(160%);
   }
 
-  .btn {
+  /* Bars: wider blur, flatter fill, no rounding of their own. */
+  .glass-bar {
+    --glass-fill: rgba(255, 255, 255, 0.06);
+    --glass-blur: var(--blur-bar);
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  }
+
+  /* Popovers and menus: the heaviest blur in the app. */
+  .glass-pop {
+    --glass-fill: rgba(255, 255, 255, 0.07);
+    --glass-blur: var(--blur-pop);
+    --glass-rim: rgba(255, 255, 255, 0.2);
+    background: var(--glass-fill);
+    border: 1px solid var(--color-hair-hi);
+    box-shadow:
+      inset 0 1px 0 var(--glass-rim),
+      0 24px 60px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(var(--glass-blur)) saturate(200%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(200%);
+  }
+
+  /* Modals sit on their own near-opaque plate so long lists stay readable. */
+  .sheet {
+    background: var(--color-sheet);
+    border: 1px solid var(--color-hair-hi);
+    border-radius: var(--radius-sheet);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 40px 90px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+  }
+
+  /* The single solid surface in the app — reserved for the committing action. */
+  .btn-solid {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    height: 28px;
-    padding: 0 12px;
-    border: 1px solid var(--color-rule);
-    border-radius: var(--radius-card);
-    background: transparent;
-    color: var(--color-ink);
-    white-space: nowrap;
-    transition: background-color 120ms var(--ease-out-quart);
+    justify-content: center;
+    gap: 7px;
+    height: 34px;
+    padding: 0 16px;
+    border-radius: var(--radius-pill);
+    background: var(--color-ink);
+    color: #0b0d11;
+    font-size: 12.5px;
+    font-weight: 500;
+    transition: background-color 200ms var(--ease-menlo);
   }
-  .btn:hover:not(:disabled) {
-    background: var(--color-manila-deep);
+  .btn-solid:hover:not(:disabled) {
+    background: #ffffff;
   }
-  .btn:disabled {
-    opacity: 0.4;
-    cursor: default;
+  .btn-solid:disabled {
+    opacity: 0.38;
   }
 
-  /* The single accent. One primary action per screen; that is the whole point. */
-  .btn-primary {
-    background: var(--color-oxblood);
-    border-color: var(--color-oxblood);
-    color: var(--color-paper);
-    font-weight: 500;
+  /* Everything else: glass, and it lifts on hover. */
+  .btn-glass {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 34px;
+    padding: 0 15px;
+    border-radius: var(--radius-pill);
+    background: var(--color-glass);
+    border: 1px solid var(--color-hair);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    color: var(--color-ink-86);
+    font-size: 12.5px;
+    transition:
+      background-color 200ms var(--ease-menlo),
+      color 200ms var(--ease-menlo),
+      border-color 200ms var(--ease-menlo);
   }
-  .btn-primary:hover:not(:disabled) {
-    background: #7a3125;
+  .btn-glass:hover:not(:disabled) {
+    background: var(--color-glass-hi);
+    border-color: var(--color-hair-hi);
+    color: var(--color-ink);
+  }
+  .btn-glass:disabled {
+    opacity: 0.38;
   }
 
   .field {
     width: 100%;
-    padding: 6px 9px;
-    background: rgba(255, 255, 255, 0.55);
-    border: 1px solid var(--color-rule);
-    border-radius: var(--radius-card);
-    color: var(--color-ink);
-  }
-  .field::placeholder {
-    color: var(--color-mute);
+    height: 34px;
+    padding: 0 11px;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--color-hair);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    color: var(--color-ink-body);
+    font-size: 12.5px;
+    transition: border-color 200ms var(--ease-menlo);
   }
   .field:focus {
     outline: none;
-    border-color: var(--color-oxblood);
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
-  .mono {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    font-feature-settings: "calt" 0;
+  /* Eyebrow: the small uppercase label that names a stage or a section. */
+  .eyebrow {
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--color-ink-70);
   }
+}
 
-  /* ── The manila folder tab ──────────────────────────────────────────────
-     A small offset tab on the top-left edge. This one detail carries the
-     entire metaphor, so it is drawn precisely and then left alone.
-     ────────────────────────────────────────────────────────────────────── */
-  .folder {
-    position: relative;
-    background: var(--color-manila);
-    border: 1px solid var(--color-rule);
-    border-radius: 2px var(--radius-card) var(--radius-card) var(--radius-card);
-    margin-top: 9px;
+@layer utilities {
+  /* Entrances. `menlo-rise` is the default for anything that appears. */
+  .anim-rise {
+    animation: menlo-rise 340ms var(--ease-menlo) both;
   }
-  .folder::before {
-    content: "";
-    position: absolute;
-    left: -1px;
-    top: -10px;
-    width: 42%;
-    max-width: 84px;
-    height: 10px;
-    background: var(--color-manila);
-    border: 1px solid var(--color-rule);
-    border-bottom: none;
-    /* The angled right edge of a real folder tab. */
-    border-radius: 3px 7px 0 0;
-    clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 100%, 0 100%);
+  .anim-fade-in {
+    animation: menlo-fade-in 280ms var(--ease-menlo) both;
   }
-  .folder-active,
-  .folder-active::before {
-    background: var(--color-manila-deep);
-    border-color: rgba(140, 58, 43, 0.45);
+}
+
+@keyframes menlo-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes menlo-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* A file card crossing the window from its source to its destination lane.
+   `--dx`/`--dy` are set per card at the call site. */
+@keyframes menlo-fly {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.7);
+  }
+  14% {
+    opacity: 1;
+    transform: translate(calc(var(--dx) * 0.16), calc(var(--dy) * 0.22)) scale(1);
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(0.5);
+  }
+}
+
+/* File-type glyphs drifting behind the home screen. */
+@keyframes menlo-drift {
+  0% {
+    transform: translateY(0) rotate(var(--rot));
+  }
+  50% {
+    transform: translateY(-14px) rotate(calc(var(--rot) * -0.6));
+  }
+  100% {
+    transform: translateY(0) rotate(var(--rot));
+  }
+}
+
+/* The light pools.
+   Three waypoints rather than a there-and-back, so the drift never reads as a
+   pendulum, and `translate3d` to keep each pool on its own compositor layer. The
+   loops are long and mutually prime, so the three never line up twice the same way. */
+@keyframes menlo-orb-a {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  34% {
+    transform: translate3d(126px, 62px, 0) scale(1.16);
+  }
+  67% {
+    transform: translate3d(58px, 128px, 0) scale(1.05);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+@keyframes menlo-orb-b {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.06);
+  }
+  38% {
+    transform: translate3d(-104px, 88px, 0) scale(0.92);
+  }
+  71% {
+    transform: translate3d(-132px, -34px, 0) scale(1.1);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.06);
+  }
+}
+@keyframes menlo-orb-c {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  31% {
+    transform: translate3d(92px, -78px, 0) scale(1.14);
+  }
+  66% {
+    transform: translate3d(-66px, -46px, 0) scale(0.96);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* The specular band that crosses the primary CTA once every 20s. */
+@keyframes menlo-glint {
+  0%,
+  90% {
+    transform: translate(-150%, -150%) rotate(38deg);
+    opacity: 0;
+  }
+  92% {
+    opacity: 0.75;
+  }
+  97% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translate(150%, 150%) rotate(38deg);
+    opacity: 0;
+  }
+}
+
+/* Cards shuffling inside the sorting and scanning popups. */
+@keyframes menlo-sort {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0.4;
+  }
+  32% {
+    transform: translate(var(--sx), var(--sy)) rotate(var(--srot));
+    opacity: 1;
+  }
+  64% {
+    transform: translate(calc(var(--sx) * -0.7), calc(var(--sy) * 0.9))
+      rotate(calc(var(--srot) * -1));
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0.4;
   }
 }
 

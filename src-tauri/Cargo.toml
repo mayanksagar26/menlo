@@ -37,6 +37,11 @@ mime_guess = "2"
 
 # `notify` arrives with the Phase 3 menu-bar watcher, not before.
 
+[dev-dependencies]
+# The mock runtime behind tests/ipc.rs, which drives the real command layer with the
+# exact JSON the window sends. Test builds only; the app never links it.
+tauri = { version = "2", features = ["test"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

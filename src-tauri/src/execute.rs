@@ -5,32 +5,95 @@
 //! Every completed move is journalled before the next one starts, so an interrupted
 //! run is still fully revertible.
 
-use crate::config::Config;
+use crate::config::{Config, DuplicatePolicy};
 use crate::error::{Error, Result};
-use crate::journal::{BatchHeader, FailureRecord, Journal, Line, MoveRecord, Strategy};
-use crate::plan::Plan;
+use crate::journal::{BatchHeader, FailureRecord, Journal, KeptRecord, Line, MoveRecord, Strategy};
+use crate::plan::{DuplicateChoice, DuplicateKind, Plan, PlanEntry};
 use crate::safety;
 use crate::scan::{hash_file, Scan};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecuteOutcome {
     pub batch_id: String,
+    /// True when the user pressed Stop. Everything after that point was left alone.
+    pub stopped: bool,
     pub moved: usize,
+    /// Duplicates sent to the Trash.
+    pub trashed: usize,
+    /// Duplicates the user chose to leave where they were.
+    pub kept: usize,
     pub failures: Vec<FailureRecord>,
     /// Rules crystallised from this batch (§1.2 tier 2).
     pub learned: Vec<crate::rules::Rule>,
 }
 
-/// Apply the approved entries of a plan.
+/// What happened to one file, for the progress stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StepOutcome {
+    Moved,
+    Trashed,
+    Kept,
+    Failed,
+}
+
+/// One tick of the Move stage's counter. Carries ids and keys only — never a path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Progress {
+    pub done: usize,
+    pub total: usize,
+    pub entry_id: String,
+    pub destination_key: Option<String>,
+    pub outcome: StepOutcome,
+}
+
+/// Apply the approved entries of a plan. See [`execute_with`].
+pub fn execute(plan: &Plan, scan: &Scan, config: &Config) -> Result<ExecuteOutcome> {
+    execute_with(plan, scan, config, None, || false, |_| {})
+}
+
+/// What to do with an entry's duplicate. An explicit choice wins; otherwise the
+/// Duplicates setting decides, and "Ask" — which should have been asked already — falls
+/// back to keeping the file, the one choice that can never lose anything.
+fn choice_for(entry: &PlanEntry, policy: DuplicatePolicy) -> DuplicateChoice {
+    match (&entry.duplicate, entry.on_duplicate) {
+        (None, _) => DuplicateChoice::MoveAnyway,
+        (Some(_), Some(c)) => c,
+        (Some(d), None) => match d.kind {
+            DuplicateKind::SameName => DuplicateChoice::MoveAnyway,
+            DuplicateKind::Identical => match policy {
+                DuplicatePolicy::Trash => DuplicateChoice::Trash,
+                DuplicatePolicy::Keep | DuplicatePolicy::Ask => DuplicateChoice::Keep,
+            },
+        },
+    }
+}
+
+/// Apply the approved entries of a plan, reporting each file as it lands.
 ///
 /// One file failing does not abort the batch — the other 199 files should still get
 /// filed, and the failure is recorded and surfaced. This is distinct from §4.3, where
 /// a *malformed plan* is rejected wholesale before we get here.
-pub fn execute(plan: &Plan, scan: &Scan, config: &Config) -> Result<ExecuteOutcome> {
+///
+/// `plan.entries[*].duplicate` must be fresh — recomputed by `dupes::detect` against
+/// the stored scan — before this is called. The Trash branch re-verifies the bytes
+/// regardless, but it is the caller's job not to hand in a stale finding.
+///
+/// `should_stop` is asked before each file. Stopping never interrupts a file mid-move:
+/// the one in flight finishes and is journalled, and the rest are not touched.
+pub fn execute_with(
+    plan: &Plan,
+    scan: &Scan,
+    config: &Config,
+    set_label: Option<String>,
+    should_stop: impl Fn() -> bool,
+    mut on_progress: impl FnMut(Progress),
+) -> Result<ExecuteOutcome> {
     config.validate()?;
 
     let actionable: Vec<_> = plan.actionable().collect();
@@ -46,14 +109,37 @@ pub fn execute(plan: &Plan, scan: &Scan, config: &Config) -> Result<ExecuteOutco
         batch_id: plan.batch_id.clone(),
         started_at: Utc::now(),
         source: plan.source.clone(),
+        sources: plan.sources.clone(),
+        set_label,
         planned: actionable.len(),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
     })?;
 
     let mut moved = 0usize;
+    let mut trashed = 0usize;
+    let mut kept = 0usize;
     let mut failures = Vec::new();
+    let total = actionable.len();
+    // Where each file in this batch ended up, so a later duplicate can be checked
+    // against the copy that was actually kept.
+    let mut landed: HashMap<String, PathBuf> = HashMap::new();
+    let mut stopped = false;
 
-    for entry in actionable {
+    for (n, entry) in actionable.into_iter().enumerate() {
+        if should_stop() {
+            stopped = true;
+            break;
+        }
+        let mut report = |outcome: StepOutcome| {
+            on_progress(Progress {
+                done: n + 1,
+                total,
+                entry_id: entry.id.clone(),
+                destination_key: entry.destination_key.clone(),
+                outcome,
+            })
+        };
+
         let Some(item) = scan.get(&entry.id) else {
             // The plan and the scan disagree; §4.3 should have caught this.
             failures.push(record_failure(
@@ -63,6 +149,7 @@ pub fn execute(plan: &Plan, scan: &Scan, config: &Config) -> Result<ExecuteOutco
                 Path::new(""),
                 "no scanned file for this plan entry",
             )?);
+            report(StepOutcome::Failed);
             continue;
         };
 
@@ -75,8 +162,53 @@ pub fn execute(plan: &Plan, scan: &Scan, config: &Config) -> Result<ExecuteOutco
                 Path::new(""),
                 &format!("destination `{key}` no longer exists"),
             )?);
+            report(StepOutcome::Failed);
             continue;
         };
+
+        match choice_for(entry, config.settings.duplicates) {
+            DuplicateChoice::MoveAnyway => {}
+            DuplicateChoice::Keep => {
+                journal.append(&Line::Kept(KeptRecord {
+                    entry_id: entry.id.clone(),
+                    from: item.path.clone(),
+                    reason: "already in the destination; kept where it was".into(),
+                    at: Utc::now(),
+                }))?;
+                kept += 1;
+                report(StepOutcome::Kept);
+                continue;
+            }
+            DuplicateChoice::Trash => {
+                match trash_duplicate(entry, &item.path, &dest.path, &landed, scan, config) {
+                    Ok(done) => {
+                        journal.append(&Line::Move(MoveRecord {
+                            entry_id: entry.id.clone(),
+                            from: item.path.clone(),
+                            to: done.to,
+                            sha256: done.sha256,
+                            size_bytes: done.size_bytes,
+                            strategy: Strategy::Trash,
+                            renamed_for_collision: done.renamed_for_collision,
+                            at: Utc::now(),
+                        }))?;
+                        trashed += 1;
+                        report(StepOutcome::Trashed);
+                    }
+                    Err(e) => {
+                        failures.push(record_failure(
+                            &mut journal,
+                            &entry.id,
+                            &item.path,
+                            Path::new(""),
+                            &e.to_string(),
+                        )?);
+                        report(StepOutcome::Failed);
+                    }
+                }
+                continue;
+            }
+        }
 
         let filename = entry
             .rename_to
@@ -92,6 +224,7 @@ pub fn execute(plan: &Plan, scan: &Scan, config: &Config) -> Result<ExecuteOutco
                 Path::new(""),
                 &why,
             )?);
+            report(StepOutcome::Failed);
             continue;
         }
 
@@ -113,7 +246,9 @@ pub fn execute(plan: &Plan, scan: &Scan, config: &Config) -> Result<ExecuteOutco
                     renamed_for_collision: done.renamed_for_collision,
                     at: Utc::now(),
                 }))?;
+                landed.insert(entry.id.clone(), done.to);
                 moved += 1;
+                report(StepOutcome::Moved);
             }
             Err(e) => {
                 let intended = dest.path.join(&filename);
@@ -124,6 +259,7 @@ pub fn execute(plan: &Plan, scan: &Scan, config: &Config) -> Result<ExecuteOutco
                     &intended,
                     &e.to_string(),
                 )?);
+                report(StepOutcome::Failed);
             }
         }
     }
@@ -139,9 +275,90 @@ pub fn execute(plan: &Plan, scan: &Scan, config: &Config) -> Result<ExecuteOutco
 
     Ok(ExecuteOutcome {
         batch_id: plan.batch_id.clone(),
+        stopped,
         moved,
+        trashed,
+        kept,
         failures,
         learned,
+    })
+}
+
+/// Send a duplicate to the Trash — only if it is, right now, byte-identical to a copy
+/// that will survive.
+///
+/// "The copy that will survive" is the file already in the destination, or for a
+/// duplicate within the batch, wherever its twin is now: the destination if it moved,
+/// its source if it was kept. Both are re-hashed here, immediately before the move,
+/// not trusted from when the plan was built.
+fn trash_duplicate(
+    entry: &PlanEntry,
+    source: &Path,
+    dest_dir: &Path,
+    landed: &HashMap<String, PathBuf>,
+    scan: &Scan,
+    config: &Config,
+) -> Result<Moved> {
+    let dup = entry
+        .duplicate
+        .as_ref()
+        .ok_or_else(|| Error::safety("nothing to compare against; left where it was"))?;
+    if dup.kind != DuplicateKind::Identical {
+        return Err(Error::safety(
+            "only a byte-identical copy can be sent to the Trash; left where it was",
+        ));
+    }
+
+    let survivor = match &dup.same_as_entry {
+        Some(twin) => landed
+            .get(twin)
+            .cloned()
+            .or_else(|| scan.get(twin).map(|i| i.path.clone()))
+            .ok_or_else(|| Error::safety("its twin in this batch has gone; left where it was"))?,
+        None => {
+            crate::plan::validate_rename(&dup.existing_name).map_err(Error::safety)?;
+            dest_dir.join(&dup.existing_name)
+        }
+    };
+
+    if survivor == source || !crate::dupes::still_identical(source, &survivor) {
+        return Err(Error::integrity(
+            "no longer identical to the copy already filed; left where it was",
+        ));
+    }
+
+    trash_one(source, config, &entry.ext)
+}
+
+/// Move a file into the Trash with a name that does not collide, and report where it
+/// went so the journal — and therefore Runs — can bring it back.
+///
+/// The `trash` crate is in the dependency set, but it discards the resulting location
+/// and its default method drives Finder over AppleScript, which asks the user for an
+/// Automation permission. Moving into the Trash folder directly needs neither.
+fn trash_one(source: &Path, config: &Config, ext: &str) -> Result<Moved> {
+    safety::assert_trash_allowed(source, config, ext)?;
+
+    let dir = crate::config::trash_dir()?;
+    std::fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
+    let name = source
+        .file_name()
+        .ok_or_else(|| Error::safety(format!("{} has no file name", source.display())))?;
+    let naive = dir.join(name);
+    let target = unique_path(&naive);
+
+    let size_bytes = std::fs::metadata(source)
+        .map_err(|e| Error::io(source, e))?
+        .len();
+    transfer(source, &target)?;
+    let sha256 = hash_file(&target)?;
+
+    Ok(Moved {
+        renamed_for_collision: target != naive,
+        to: target,
+        sha256,
+        size_bytes,
+        strategy: Strategy::Trash,
     })
 }
 

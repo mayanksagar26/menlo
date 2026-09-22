@@ -205,6 +205,36 @@ pub fn assert_move_allowed(source: &Path, target: &Path, config: &Config, ext: &
     Ok(())
 }
 
+/// The gate before a duplicate goes to the Trash: every check a move gets except the
+/// destination allowlist, since the Trash is not a destination the user added.
+pub fn assert_trash_allowed(source: &Path, config: &Config, ext: &str) -> Result<()> {
+    let src = canonical_guard(source)?;
+
+    let meta = std::fs::symlink_metadata(source).map_err(|e| Error::io(source, e))?;
+    if meta.file_type().is_symlink() {
+        return Err(Error::safety(format!("{} is a symlink", source.display())));
+    }
+    if meta.is_dir() {
+        return Err(Error::safety(format!(
+            "{} is a directory",
+            source.display()
+        )));
+    }
+    if !config.settings.allow_installers && is_installer(ext) {
+        return Err(Error::safety(format!(
+            "{} is an installer; enable \"move installers\" in Settings to include it",
+            source.display()
+        )));
+    }
+    if config.settings.check_open_files && is_open_by_another_process(&src) {
+        return Err(Error::safety(format!(
+            "{} is open in another application",
+            src.display()
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,6 +289,7 @@ mod tests {
             label: "Finance".into(),
             path: dest_root.clone(),
             brief: String::new(),
+            parent: None,
         }];
 
         assert!(assert_within_destination(&dest_root.join("a.pdf"), &dests).is_ok());
@@ -282,6 +313,7 @@ mod tests {
             label: "Finance".into(),
             path: dest_root,
             brief: String::new(),
+            parent: None,
         }];
 
         // Lexically this is "inside Finance"; after resolution it is not.

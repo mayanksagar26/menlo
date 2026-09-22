@@ -112,19 +112,18 @@ fn make_fixture(n: usize) -> Fixture {
                 label: k.to_string(),
                 path,
                 brief: String::new(),
+                parent: None,
             }
         })
         .collect();
 
-    let config = Config {
-        source: Some(source.clone()),
-        destinations,
-        // lsof on 200 files makes the test crawl and proves nothing here; it has its
-        // own unit coverage in `safety`.
-        settings: Settings {
-            allow_installers: false,
-            check_open_files: false,
-        },
+    let mut config = Config::new(vec![source.clone()], destinations);
+    // lsof on 200 files makes the test crawl and proves nothing here; it has its own
+    // unit coverage in `safety`.
+    config.settings = Settings {
+        allow_installers: false,
+        check_open_files: false,
+        ..Settings::default()
     };
     menlo_lib::config::save(&config).unwrap();
 

@@ -1,19 +1,31 @@
 //! Tier 1 (deterministic) and tier 2 (learned) of §1.2's routing.
 //!
 //! Between them these should resolve 70–80% of a typical Downloads folder with zero
-//! inference. Whatever is left is the only thing Phase 2 sends to a CLI.
+//! inference. Whatever is left is the only thing a model is ever asked about.
 //!
-//! Rule precedence, highest first:
-//!   1. user rules    — an explicit instruction always wins
-//!   2. learned rules — crystallised from a decision the user approved
-//!   3. built-in      — the extension map, which only fires for well-known keys
+//! Routing one file runs in four steps (see [`route`]):
 //!
-//! Within a tier, the most specific matcher wins (see [`Matcher::specificity`]), so
-//! `glob:Invoice_*.pdf` beats `ext:pdf` regardless of insertion order.
+//!   1. **Exclude.** A folder's "Skip …" rule that the file matches, or an "Only …"
+//!      rule it fails, takes that folder and its subfolders out of the running.
+//!   2. **Named rules.** A plain-language rule that matches the file's *name or type*
+//!      routes it directly, at any depth — "lease or agreement" sends a PDF to
+//!      Documents/Contracts even though the extension map says Documents.
+//!   3. **Matchers.** Otherwise the matcher tiers pick a folder, highest first:
+//!      user rules, then learned rules, then the built-in extension map. Within a
+//!      tier the most specific matcher wins ([`Matcher::specificity`]), so
+//!      `glob:Invoice_*.pdf` beats `ext:pdf` regardless of insertion order.
+//!   4. **Refine.** Having landed in a top-level folder, a file may drop one level
+//!      into a subfolder — by a subfolder's rule, or, for a subfolder nobody has
+//!      written a rule for, by carrying every word of its name.
+//!
+//! Step 4 is the only place a rule with nothing but a year, size or age can act.
+//! "Anything dated 2026" on Documents/Invoices 2026 picks among *documents*; it can
+//! never pull a 2026 holiday photo into a finance folder.
 
 use crate::config::{Config, Destination};
 use crate::error::{Error, Result};
 use crate::plan::{Action, Plan, PlanEntry, ResolvedBy};
+use crate::prose::{self, FolderRule, Intent, Reading};
 use crate::scan::{Scan, ScanItem};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -300,8 +312,12 @@ pub fn builtin_rules(destinations: &[Destination]) -> Vec<Rule> {
 /// User + learned rules, persisted alongside the config.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RuleSet {
+    /// Matchers: `ext:`, `glob:`, `origin:`. Learned rules are always these.
     #[serde(default)]
     pub rules: Vec<Rule>,
+    /// Sentences the user wrote about a folder, in the order they wrote them.
+    #[serde(default)]
+    pub folder_rules: Vec<FolderRule>,
 }
 
 impl RuleSet {
@@ -328,6 +344,36 @@ impl RuleSet {
         let before = self.rules.len();
         self.rules.retain(|r| r.id != id);
         self.rules.len() != before
+    }
+
+    /// Add a sentence to a folder. Blank text and an exact repeat are ignored.
+    pub fn add_folder_rule(&mut self, destination_key: &str, text: &str) -> Option<FolderRule> {
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
+        }
+        let dup = self
+            .folder_rules
+            .iter()
+            .any(|r| r.destination_key == destination_key && r.text == text);
+        if dup {
+            return None;
+        }
+        let rule = FolderRule::new(destination_key, text);
+        self.folder_rules.push(rule.clone());
+        Some(rule)
+    }
+
+    pub fn remove_folder_rule(&mut self, id: &str) -> bool {
+        let before = self.folder_rules.len();
+        self.folder_rules.retain(|r| r.id != id);
+        self.folder_rules.len() != before
+    }
+
+    pub fn folder_rules_for<'a>(&'a self, key: &'a str) -> impl Iterator<Item = &'a FolderRule> {
+        self.folder_rules
+            .iter()
+            .filter(move |r| r.destination_key == key)
     }
 }
 
@@ -365,11 +411,33 @@ fn tier_weight(source: RuleSource) -> usize {
     }
 }
 
+/// A folder rule paired with its reading and its folder, ready to compete.
+struct ReadRule<'a> {
+    rule: &'a FolderRule,
+    reading: Reading,
+    dest: &'a Destination,
+}
+
+/// Where one file is going, and why.
+struct Routed {
+    key: String,
+    resolved_by: ResolvedBy,
+    reason: String,
+}
+
 /// Run tiers 1 and 2 over a scan and produce a full [`Plan`].
 ///
 /// Every scanned file gets an entry. Unmatched files become `needs_review` with
-/// confidence 0 — they are exactly the residue Phase 2's LLM pass will pick up.
+/// confidence 0 — they are exactly the residue a model pass will pick up.
+///
+/// Routes only to the destinations in `config`; callers planning for one folder set
+/// hand in a config narrowed to that set with [`Config::restricted_to`].
 pub fn build_plan(scan: &Scan, config: &Config, ruleset: &RuleSet) -> Plan {
+    build_plan_at(scan, config, ruleset, Utc::now())
+}
+
+/// [`build_plan`] with the clock passed in, so age rules are testable.
+pub fn build_plan_at(scan: &Scan, config: &Config, ruleset: &RuleSet, now: DateTime<Utc>) -> Plan {
     let mut all: Vec<Rule> = builtin_rules(&config.destinations);
     all.extend(ruleset.rules.iter().filter(|r| r.enabled).cloned());
 
@@ -385,50 +453,44 @@ pub fn build_plan(scan: &Scan, config: &Config, ruleset: &RuleSet) -> Plan {
         })
         .collect();
 
+    // Read every folder rule once, not once per file. A rule for a folder outside
+    // this plan is left out; a rule nobody can read without a model is kept, because
+    // its mere presence switches off that subfolder's implicit rule.
+    let readings: Vec<ReadRule> = ruleset
+        .folder_rules
+        .iter()
+        .filter_map(|rule| {
+            let dest = config.destination(&rule.destination_key)?;
+            Some(ReadRule {
+                rule,
+                reading: prose::read(&rule.text),
+                dest,
+            })
+        })
+        .collect();
+
     let entries = scan
         .items
         .iter()
-        .map(|item| {
-            let best = candidates
-                .iter()
-                .filter(|c| c.matcher.matches(item))
-                .max_by_key(|c| (tier_weight(c.rule.source), c.matcher.specificity()));
-
-            match best {
-                Some(c) => {
-                    let resolved_by = match c.rule.source {
-                        RuleSource::Learned => ResolvedBy::Learned,
-                        _ => ResolvedBy::Deterministic,
-                    };
-                    let label = config
-                        .destination(&c.rule.destination_key)
-                        .map(|d| d.label.clone())
-                        .unwrap_or_else(|| c.rule.destination_key.clone());
-                    let reason = match c.rule.source {
-                        RuleSource::Learned => {
-                            format!("Learned from an earlier approval: {}.", c.matcher.human())
-                        }
-                        RuleSource::User => format!("Your rule: {}.", c.matcher.human()),
-                        RuleSource::Builtin => {
-                            format!("{} → {label}.", capitalise(&c.matcher.human()))
-                        }
-                    };
-                    PlanEntry {
-                        id: item.entry.id.clone(),
-                        name: item.entry.name.clone(),
-                        ext: item.entry.ext.clone(),
-                        size_bytes: item.entry.size_bytes,
-                        action: Action::Move,
-                        destination_key: Some(c.rule.destination_key.clone()),
-                        rename_to: None,
-                        confidence: 1.0,
-                        reason,
-                        suggest_rule: None,
-                        resolved_by,
-                        included: true,
-                        overridden: false,
-                    }
-                }
+        .map(
+            |item| match route(item, config, &candidates, &readings, now) {
+                Some(r) => PlanEntry {
+                    id: item.entry.id.clone(),
+                    name: item.entry.name.clone(),
+                    ext: item.entry.ext.clone(),
+                    size_bytes: item.entry.size_bytes,
+                    action: Action::Move,
+                    destination_key: Some(r.key),
+                    rename_to: None,
+                    confidence: 1.0,
+                    reason: r.reason,
+                    suggest_rule: None,
+                    resolved_by: r.resolved_by,
+                    included: true,
+                    overridden: false,
+                    duplicate: None,
+                    on_duplicate: None,
+                },
                 None => PlanEntry {
                     id: item.entry.id.clone(),
                     name: item.entry.name.clone(),
@@ -443,12 +505,162 @@ pub fn build_plan(scan: &Scan, config: &Config, ruleset: &RuleSet) -> Plan {
                     resolved_by: ResolvedBy::Deterministic,
                     included: false,
                     overridden: false,
+                    duplicate: None,
+                    on_duplicate: None,
                 },
-            }
-        })
+            },
+        )
         .collect();
 
-    Plan::new(config.source.clone().unwrap_or_default(), entries, scan)
+    Plan::new(entries, scan)
+}
+
+/// The four routing steps from the module docs, for one file.
+fn route(
+    item: &ScanItem,
+    config: &Config,
+    candidates: &[Candidate],
+    readings: &[ReadRule],
+    now: DateTime<Utc>,
+) -> Option<Routed> {
+    let entry = &item.entry;
+
+    // 1. Exclude.
+    let mut excluded: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for d in &config.destinations {
+        let own: Vec<&ReadRule> = readings
+            .iter()
+            .filter(|r| r.dest.key == d.key && r.reading.understood())
+            .collect();
+        let skipped = own
+            .iter()
+            .any(|r| r.reading.intent == Some(Intent::Skip) && r.reading.matches(entry, now));
+        let gates: Vec<&&ReadRule> = own
+            .iter()
+            .filter(|r| r.reading.intent == Some(Intent::Only))
+            .collect();
+        let failed_gate = !gates.is_empty() && !gates.iter().any(|r| r.reading.matches(entry, now));
+        if skipped || failed_gate {
+            excluded.insert(d.key.as_str());
+            // A folder that refuses a file refuses it for its subfolders too.
+            for s in config.subfolders_of(&d.key) {
+                excluded.insert(s.key.as_str());
+            }
+        }
+    }
+
+    // 2. Named rules, at any depth. A subfolder's rule outranks its parent's.
+    let named = readings
+        .iter()
+        .filter(|r| !excluded.contains(r.dest.key.as_str()))
+        .filter(|r| r.reading.intent == Some(Intent::Route) && r.reading.has_name_or_type())
+        .filter(|r| r.reading.matches(entry, now))
+        .max_by_key(|r| (r.dest.is_subfolder(), r.reading.specificity()));
+
+    let first = match named {
+        Some(r) => Routed {
+            key: r.dest.key.clone(),
+            resolved_by: ResolvedBy::Deterministic,
+            reason: format!("Your rule for {}: “{}”", r.dest.label, r.rule.text),
+        },
+        None => {
+            // 3. Matchers.
+            let best = candidates
+                .iter()
+                .filter(|c| !excluded.contains(c.rule.destination_key.as_str()))
+                .filter(|c| c.matcher.matches(item))
+                .max_by_key(|c| (tier_weight(c.rule.source), c.matcher.specificity()))?;
+            let label = config
+                .destination(&best.rule.destination_key)
+                .map(|d| d.label.clone())
+                .unwrap_or_else(|| best.rule.destination_key.clone());
+            Routed {
+                key: best.rule.destination_key.clone(),
+                resolved_by: match best.rule.source {
+                    RuleSource::Learned => ResolvedBy::Learned,
+                    _ => ResolvedBy::Deterministic,
+                },
+                reason: match best.rule.source {
+                    RuleSource::Learned => {
+                        format!(
+                            "Learned from an earlier approval: {}.",
+                            best.matcher.human()
+                        )
+                    }
+                    RuleSource::User => format!("Your rule: {}.", best.matcher.human()),
+                    RuleSource::Builtin => {
+                        format!("{} → {label}.", capitalise(&best.matcher.human()))
+                    }
+                },
+            }
+        }
+    };
+
+    // 4. Refine, one level, only from a top-level folder.
+    let landed = config.destination(&first.key)?;
+    if landed.is_subfolder() {
+        return Some(first);
+    }
+    Some(refine(
+        first, landed, entry, config, readings, &excluded, now,
+    ))
+}
+
+fn refine(
+    first: Routed,
+    parent: &Destination,
+    entry: &crate::scan::ManifestEntry,
+    config: &Config,
+    readings: &[ReadRule],
+    excluded: &std::collections::HashSet<&str>,
+    now: DateTime<Utc>,
+) -> Routed {
+    let mut best: Option<(usize, Routed)> = None;
+
+    for sub in config.subfolders_of(&parent.key) {
+        if excluded.contains(sub.key.as_str()) {
+            continue;
+        }
+        let own: Vec<&ReadRule> = readings.iter().filter(|r| r.dest.key == sub.key).collect();
+
+        let hit = if own.is_empty() {
+            // Nobody has written a rule for this subfolder: it takes files named like it.
+            let implicit = prose::implicit_subfolder_reading(&sub.label);
+            prose::matches_all_words(&implicit, entry).then(|| {
+                (
+                    300 + sub.label.len(),
+                    Routed {
+                        key: sub.key.clone(),
+                        resolved_by: first.resolved_by,
+                        reason: format!("Named like {}/{}.", parent.label, sub.label),
+                    },
+                )
+            })
+        } else {
+            own.iter()
+                .filter(|r| r.reading.intent == Some(Intent::Route))
+                .filter(|r| r.reading.matches(entry, now))
+                .max_by_key(|r| r.reading.specificity())
+                .map(|r| {
+                    (
+                        r.reading.specificity(),
+                        Routed {
+                            key: sub.key.clone(),
+                            resolved_by: ResolvedBy::Deterministic,
+                            reason: format!("Your rule for {}: “{}”", sub.label, r.rule.text),
+                        },
+                    )
+                })
+        };
+
+        if let Some((score, routed)) = hit {
+            if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
+                best = Some((score, routed));
+            }
+        }
+    }
+
+    best.map(|(_, r)| r).unwrap_or(first)
 }
 
 fn capitalise(s: &str) -> String {
@@ -495,7 +707,6 @@ pub fn learn_from_approved(plan: &Plan, ruleset: &mut RuleSet) -> Vec<Rule> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Settings;
     use crate::plan::SuggestRule;
     use crate::testutil::TempDir;
     use std::path::PathBuf;
@@ -557,19 +768,19 @@ mod tests {
             tmp.write(n, b"x");
         }
         let scan = crate::scan::scan(tmp.path()).unwrap();
-        let config = Config {
-            source: Some(tmp.path().to_path_buf()),
-            destinations: dest_keys
+        let config = Config::new(
+            vec![tmp.path().to_path_buf()],
+            dest_keys
                 .iter()
                 .map(|k| Destination {
                     key: (*k).to_string(),
                     label: capitalise(k),
                     path: PathBuf::from(format!("/tmp/{k}")),
                     brief: String::new(),
+                    parent: None,
                 })
                 .collect(),
-            settings: Settings::default(),
-        };
+        );
         (tmp, scan, config)
     }
 
@@ -737,6 +948,159 @@ mod tests {
         assert_eq!(learn_from_approved(&plan, &mut set).len(), 1);
         assert_eq!(learn_from_approved(&plan, &mut set).len(), 0);
         assert_eq!(set.rules.len(), 1);
+    }
+
+    // ── Plain-language rules ──────────────────────────────────────────────────
+
+    /// `documents` and `images`, with Documents/Contracts and Documents/Invoices 2026.
+    fn with_subfolders(names: &[&str]) -> (TempDir, Scan, Config) {
+        let (t, scan, mut config) = fixture(names, &["documents", "images"]);
+        for (key, label) in [
+            ("documents-contracts", "Contracts"),
+            ("documents-invoices-2026", "Invoices 2026"),
+        ] {
+            config.destinations.push(Destination {
+                key: key.into(),
+                label: label.into(),
+                path: PathBuf::from(format!("/tmp/documents/{label}")),
+                brief: String::new(),
+                parent: Some("documents".into()),
+            });
+        }
+        (t, scan, config)
+    }
+
+    fn dest_of<'a>(plan: &'a Plan, name: &str) -> Option<&'a str> {
+        plan.entries
+            .iter()
+            .find(|e| e.name == name)
+            .and_then(|e| e.destination_key.as_deref())
+    }
+
+    #[test]
+    fn a_named_rule_on_a_subfolder_beats_the_extension_map() {
+        let (_t, scan, config) = with_subfolders(&["Lease_Agreement_signed.pdf", "report.pdf"]);
+        let mut set = RuleSet::default();
+        set.add_folder_rule(
+            "documents-contracts",
+            "Anything with the word lease or agreement goes to Documents/Contracts",
+        );
+
+        let plan = build_plan(&scan, &config, &set);
+        assert_eq!(
+            dest_of(&plan, "Lease_Agreement_signed.pdf"),
+            Some("documents-contracts")
+        );
+        assert_eq!(dest_of(&plan, "report.pdf"), Some("documents"));
+        let lease = plan
+            .entries
+            .iter()
+            .find(|e| e.name.starts_with("Lease"))
+            .unwrap();
+        assert!(lease.reason.contains("Your rule for Contracts"));
+    }
+
+    #[test]
+    fn a_year_rule_only_picks_among_files_already_headed_for_the_parent() {
+        // The failure this ordering exists to prevent: a 2026 photo must not be swept
+        // into a finance subfolder just because the rule says "dated 2026".
+        let (_t, scan, config) = with_subfolders(&["bill_2026.pdf", "holiday_2026.jpg"]);
+        let mut set = RuleSet::default();
+        set.add_folder_rule("documents-invoices-2026", "Anything dated 2026 lands here");
+
+        let plan = build_plan(&scan, &config, &set);
+        assert_eq!(
+            dest_of(&plan, "bill_2026.pdf"),
+            Some("documents-invoices-2026")
+        );
+        assert_eq!(dest_of(&plan, "holiday_2026.jpg"), Some("images"));
+    }
+
+    #[test]
+    fn an_unruled_subfolder_takes_files_named_like_it() {
+        let (_t, scan, config) =
+            with_subfolders(&["Invoice_Aug2026.pdf", "Invoice_Aug2025.pdf", "contract.pdf"]);
+        let plan = build_plan(&scan, &config, &RuleSet::default());
+
+        assert_eq!(
+            dest_of(&plan, "Invoice_Aug2026.pdf"),
+            Some("documents-invoices-2026")
+        );
+        // Every word of "Invoices 2026" is needed; 2025 is not good enough.
+        assert_eq!(dest_of(&plan, "Invoice_Aug2025.pdf"), Some("documents"));
+        assert_eq!(dest_of(&plan, "contract.pdf"), Some("documents-contracts"));
+    }
+
+    #[test]
+    fn a_written_rule_switches_off_the_implicit_one() {
+        // The user said something specific about Contracts; the folder's name no longer
+        // speaks for it, even though Menlo cannot read what they said without a model.
+        let (_t, scan, config) = with_subfolders(&["contract.pdf"]);
+        let mut set = RuleSet::default();
+        set.add_folder_rule("documents-contracts", "Keep files grouped by year");
+
+        let plan = build_plan(&scan, &config, &set);
+        assert_eq!(dest_of(&plan, "contract.pdf"), Some("documents"));
+    }
+
+    #[test]
+    fn an_only_rule_turns_a_folder_away() {
+        let (_t, scan, config) = fixture(&["small.mp4"], &["video"]);
+        let mut set = RuleSet::default();
+        set.add_folder_rule("video", "Only move files over 10 MB");
+
+        // `small.mp4` is one byte, so Movies refuses it and nothing else will take it.
+        let plan = build_plan(&scan, &config, &set);
+        assert_eq!(plan.entries[0].action, Action::NeedsReview);
+    }
+
+    #[test]
+    fn a_skip_rule_turns_away_the_folder_and_its_subfolders() {
+        let (_t, scan, config) = with_subfolders(&["contract.pdf"]);
+        let mut set = RuleSet::default();
+        set.add_folder_rule("documents", "Skip anything under 2 KB");
+
+        let plan = build_plan(&scan, &config, &set);
+        assert_eq!(plan.entries[0].action, Action::NeedsReview);
+    }
+
+    #[test]
+    fn a_rule_that_needs_a_model_routes_nothing() {
+        let (_t, scan, config) = fixture(&["notes.xyz"], &["documents"]);
+        let mut set = RuleSet::default();
+        set.add_folder_rule("documents", "File by type, newest first");
+
+        let plan = build_plan(&scan, &config, &set);
+        assert_eq!(plan.entries[0].action, Action::NeedsReview);
+    }
+
+    #[test]
+    fn folder_rules_ignore_blanks_and_repeats() {
+        let mut set = RuleSet::default();
+        assert!(set.add_folder_rule("documents", "   ").is_none());
+        let first = set.add_folder_rule("documents", "PDFs go here").unwrap();
+        assert!(set.add_folder_rule("documents", "PDFs go here").is_none());
+        assert_eq!(set.folder_rules_for("documents").count(), 1);
+        assert!(set.remove_folder_rule(&first.id));
+        assert_eq!(set.folder_rules.len(), 0);
+    }
+
+    #[test]
+    fn a_plan_for_one_set_routes_only_into_that_set() {
+        let (_t, scan, config) = with_subfolders(&["a.pdf", "b.jpg"]);
+        let narrowed = config.restricted_to(&["images".to_string()]);
+        let plan = build_plan(&scan, &narrowed, &RuleSet::default());
+
+        assert_eq!(
+            dest_of(&plan, "a.pdf"),
+            None,
+            "documents is outside this set"
+        );
+        assert_eq!(dest_of(&plan, "b.jpg"), Some("images"));
+        // Narrowing keeps a folder's subfolders with it.
+        let docs = config.restricted_to(&["documents".to_string()]);
+        assert!(docs.destination("documents-contracts").is_some());
+        assert!(docs.destination("images").is_none());
     }
 
     #[test]
