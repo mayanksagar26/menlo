@@ -78,20 +78,33 @@ xattr -dr com.apple.quarantine /Applications/Menlo.app
 
 The release build is for **Apple Silicon**. On an Intel Mac, build from source below.
 
-### With Claude Code
+### Let your coding CLI do it
 
-If you use [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), it can
-fetch, build and install Menlo for you. In a terminal:
+If you have [Claude Code](https://claude.ai/code) or
+[Codex CLI](https://github.com/openai/codex), open a terminal in the folder you want
+the project to live in, start the CLI, and paste this:
 
-```bash
-claude "Clone https://github.com/mayanksagar26/menlo into ~/Projects/menlo. Check that
-Rust (via rustup), Node 22+ and the Xcode Command Line Tools are installed and install
-any that are missing. Then run npm install and npm run tauri build, and install
-Menlo.app from the DMG it produces into /Applications."
+```text
+Clone https://github.com/mayanksagar26/menlo and set it up for me on macOS.
+
+Do all of this:
+1. Check I have the prerequisites: macOS 11+, the Xcode Command Line Tools,
+   Node.js 22+, and Rust (stable, via rustup). If any are missing, install them
+   and tell me what you installed.
+2. git clone the repo and cd into it.
+3. Run: npm install
+4. Build the app: npm run tauri build
+5. Copy Menlo.app from src-tauri/target/release/bundle/macos/ into /Applications
+6. If macOS refuses to open it, clear the quarantine flag:
+   xattr -dr com.apple.quarantine /Applications/Menlo.app
+7. Launch it and tell me if it opened.
+
+If any step fails, read the error, fix it, and continue. Report what you did.
 ```
 
-Claude Code asks before running each command, so you can see exactly what it installs.
-Everything it does is the same as the manual steps below.
+The CLI asks before running each command, so you see exactly what it installs. The
+steps are the same as building from source below. Menlo itself does not need the CLI
+once it is installed.
 
 ### From source
 
