@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { MODELS } from "../lib/copy";
+import { SELECTABLE_MODELS } from "../lib/copy";
 import type { DuplicatePolicy, Schedule } from "../lib/types";
 import { useApp } from "../store/app";
 import { AboutIcon, ModelIcon, ProfileIcon, RunningIcon } from "../ui/glyphs";
@@ -54,7 +54,7 @@ export function SettingsPage() {
 
         <Section index={1} refs={sections} title="Working model" onEnter={setActive}>
           <div className="flex flex-col gap-2">
-            {MODELS.map((m) => {
+            {SELECTABLE_MODELS.map((m) => {
               const on = s.working_model === m.value;
               return (
                 <button
@@ -80,7 +80,7 @@ export function SettingsPage() {
                     {m.title}
                     {!m.ready && (
                       <span className="rounded-full border border-hair px-2 py-[1px] text-[10px] font-normal text-ink-60">
-                        Coming next
+                        {m.when}
                       </span>
                     )}
                   </p>

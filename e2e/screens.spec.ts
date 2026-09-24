@@ -89,6 +89,12 @@ test("every screen renders without an error", async ({ app }) => {
   await app.getByRole("menuitem", { name: /Folder sets/ }).click();
   await settle();
   await shot("12-folder-sets");
+  await app.getByRole("dialog").getByRole("button", { name: "Done" }).click();
+
+  await app.getByRole("button", { name: "How it works?" }).click();
+  await app.getByRole("button", { name: /Working models/ }).click();
+  await settle();
+  await shot("13-working-models");
 
   expect(errors).toEqual([]);
 });

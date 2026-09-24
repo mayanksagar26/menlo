@@ -41,26 +41,67 @@ export const DOCS = [
   },
 ];
 
-export const MODELS: { value: WorkingModel; title: string; body: string; ready: boolean }[] = [
+/**
+ * Who decides where a file goes once the rules have had their turn.
+ *
+ * `selectable` marks the ones Settings offers. Laya is on the list because the
+ * How it works page explains where this is going, not because it is a setting.
+ */
+export const MODELS: {
+  value: WorkingModel | "laya";
+  title: string;
+  when: string;
+  ready: boolean;
+  selectable: boolean;
+  body: string;
+  /** What it adds over the row above it. */
+  gains: string;
+  link?: { label: string; href: string };
+}[] = [
   {
     value: "fully_local",
     title: "Fully Local",
-    body: "Plain matching and ordinary logic — names, types, dates and sizes, and the rules you write. No model, no network, nothing leaves this Mac.",
+    when: "Works today",
     ready: true,
+    selectable: true,
+    body: "Plain matching and ordinary logic — names, types, dates and sizes, and the rules you write. No model, no network, nothing leaves this Mac.",
+    gains: "Instant, predictable, and it works with nothing installed. It cannot read a rule like “anything about my flat”, and it cannot tell you what is inside a screenshot.",
   },
   {
     value: "gemma",
     title: "Gemma",
-    body: "A local Gemma reads each file and applies the rules plain matching cannot. Runs on this Mac through Ollama; nothing is sent anywhere.",
+    when: "Next",
     ready: false,
+    selectable: true,
+    body: "A local Gemma reads each file and applies the rules plain matching cannot. It runs on this Mac through Ollama, reached by running the ollama command — Menlo itself still makes no network calls.",
+    gains: "Rules in any wording, and names for screenshots based on what is actually in them. Costs a few seconds per run and about 5 GB on disk.",
   },
   {
     value: "cli_agent",
     title: "CLI Agent",
-    body: "Uses Claude Code, Codex or another local CLI agent you already have, as a classifier only. Optional — Menlo never needs one.",
+    when: "Later, optional",
     ready: false,
+    selectable: true,
+    body: "Claude Code, Codex or another CLI agent you already have, driven in headless mode as a classifier only: text in, text out, no tools and no access to your files.",
+    gains: "Nothing extra to install if you already code with one. Menlo never needs it — it is an alternative to Gemma, not a requirement.",
+  },
+  {
+    value: "laya",
+    title: "Laya",
+    when: "The direction",
+    ready: false,
+    selectable: false,
+    body: "Every decision you confirm is a labelled example: this file, these rules, that folder. Enough of them and a small decision model can be fine-tuned on your own choices to answer in milliseconds, with a calibrated confidence rather than a sentence.",
+    gains: "The model step stops being a wait. Menlo already records what you approve, which is the part that makes this possible.",
+    link: { label: "Laya, by Convai Innovations", href: "https://laya.convaiinnovations.com/" },
   },
 ];
+
+/** The models Settings offers, narrowed to the setting they write. */
+export const SELECTABLE_MODELS = MODELS.filter((m) => m.selectable) as (Omit<
+  (typeof MODELS)[number],
+  "value"
+> & { value: WorkingModel })[];
 
 /** Dashed suggestion chips on the rule popup and Rules memory, by folder label. */
 const IDEAS: Record<string, string[]> = {
