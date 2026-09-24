@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { MODELS } from "../lib/copy";
+import { DOCS, MODELS } from "../lib/copy";
 import { useApp } from "../store/app";
 import { useUi } from "../store/ui";
 import { DocsIcon, RulesIcon, RunsIcon, SetsIcon, SettingsIcon } from "./glyphs";
@@ -34,7 +34,12 @@ export function ProfileMenu() {
       value: `${view?.folder_sets.length ?? 0} saved`,
       go: () => ui.openSets(true),
     },
-    { icon: <DocsIcon />, label: "How it works", value: "5 stages", go: () => ui.openPage("docs") },
+    {
+      icon: <DocsIcon />,
+      label: "How it works",
+      value: `${DOCS.length} stages`,
+      go: () => ui.openPage("docs"),
+    },
     {
       icon: <SettingsIcon />,
       label: "Settings",

@@ -7,6 +7,7 @@
 //! pointing at a folder with the picker, and each is vetted by `safety` before it is
 //! saved.
 
+pub mod avatar;
 pub mod config;
 pub mod dupes;
 pub mod error;
@@ -101,6 +102,32 @@ fn save_settings(settings: Settings) -> Result<AppView> {
     let mut config = config::load()?;
     config.settings = settings;
     commit(&config)
+}
+
+/// Store a picture the user picked as their profile picture. The window has already
+/// cropped and downscaled it; this checks it really is an image before writing it.
+#[tauri::command]
+fn save_avatar(data_url: String) -> Result<AppView> {
+    avatar::save(&data_url)?;
+    let mut config = config::load()?;
+    config.settings.avatar = avatar::CUSTOM.to_string();
+    commit(&config)
+}
+
+/// Choose one of the pictures that ship with Menlo. An uploaded one is kept on disk,
+/// so switching away and back does not lose it.
+#[tauri::command]
+fn set_avatar(id: String) -> Result<AppView> {
+    let mut config = config::load()?;
+    config.settings.avatar = id;
+    commit(&config)
+}
+
+/// Forget an uploaded picture and go back to Menlo's own.
+#[tauri::command]
+fn clear_avatar() -> Result<AppView> {
+    avatar::remove()?;
+    set_avatar(avatar::DEFAULT.to_string())
 }
 
 // ── Sources ──────────────────────────────────────────────────────────────────
@@ -415,6 +442,9 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         .invoke_handler(tauri::generate_handler![
             get_state,
             save_settings,
+            save_avatar,
+            set_avatar,
+            clear_avatar,
             add_source,
             remove_source,
             add_destination,

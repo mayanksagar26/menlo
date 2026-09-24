@@ -62,6 +62,9 @@ interface AppStore {
   removeRule: (id: string) => Promise<void>;
 
   saveSettings: (patch: Partial<Settings>) => Promise<void>;
+  setAvatar: (id: string) => Promise<void>;
+  uploadAvatar: (dataUrl: string) => Promise<void>;
+  clearAvatar: () => Promise<void>;
 
   makePlan: (sources: string[], dests: string[], label: string | null) => Promise<Plan | null>;
   choose: (entryId: string, choice: DuplicateChoice) => void;
@@ -130,6 +133,10 @@ export const useApp = create<AppStore>((set, get) => {
       set({ view: { ...view, settings } });
       await mutate(() => ipc.saveSettings(settings));
     },
+
+    setAvatar: (id) => mutate(() => ipc.setAvatar(id)),
+    uploadAvatar: (dataUrl) => mutate(() => ipc.saveAvatar(dataUrl)),
+    clearAvatar: () => mutate(ipc.clearAvatar),
 
     makePlan: async (sources, dests, label) => {
       set({ plan: null, outcome: null, progress: emptyProgress });

@@ -102,6 +102,10 @@ pub struct Settings {
 
     #[serde(default)]
     pub profile_name: String,
+    /// Which profile picture: a preset's id, or `custom` for an uploaded one
+    /// (`avatar::CUSTOM`). The picture itself is never stored here.
+    #[serde(default = "default_avatar")]
+    pub avatar: String,
     #[serde(default)]
     pub working_model: WorkingModel,
     #[serde(default)]
@@ -126,12 +130,17 @@ fn default_true() -> bool {
     true
 }
 
+fn default_avatar() -> String {
+    crate::avatar::DEFAULT.to_string()
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
             allow_installers: false,
             check_open_files: true,
             profile_name: String::new(),
+            avatar: default_avatar(),
             working_model: WorkingModel::default(),
             schedule: Schedule::default(),
             duplicates: DuplicatePolicy::default(),

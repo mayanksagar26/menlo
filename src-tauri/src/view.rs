@@ -41,6 +41,9 @@ pub struct AppView {
     pub settings: Settings,
     pub rules: Vec<FolderRuleView>,
     pub runs: Vec<BatchSummary>,
+    /// The uploaded profile picture as a `data:` URL, when that is the one chosen.
+    /// Read only then, so an unused file is not encoded on every call.
+    pub avatar_image: Option<String>,
 }
 
 pub fn app_view(config: &Config, ruleset: &RuleSet) -> Result<AppView> {
@@ -79,6 +82,11 @@ pub fn app_view(config: &Config, ruleset: &RuleSet) -> Result<AppView> {
         settings: config.settings.clone(),
         rules,
         runs: journal::list_batches()?,
+        avatar_image: if config.settings.avatar == crate::avatar::CUSTOM {
+            crate::avatar::load()?
+        } else {
+            None
+        },
     })
 }
 

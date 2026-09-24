@@ -45,6 +45,7 @@ export const VIEW: AppView = {
     allow_installers: false,
     check_open_files: true,
     profile_name: "Ada Lovelace",
+    avatar: "menlo",
     working_model: "fully_local",
     schedule: "manual",
     duplicates: "ask",
@@ -64,6 +65,7 @@ export const VIEW: AppView = {
     },
   ],
   runs: [],
+  avatar_image: null,
 };
 
 function entry(over: Partial<PlanEntry> & { id: string; name: string }): PlanEntry {
@@ -173,6 +175,16 @@ export async function installIpc(page: Page, opts: { picked?: string[] } = {}) {
       const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
         get_state: () => state,
         save_settings: (a) => (state = { ...state, settings: a.settings as typeof state.settings }),
+        set_avatar: (a) =>
+          (state = { ...state, settings: { ...state.settings, avatar: a.id as string } }),
+        save_avatar: (a) =>
+          (state = {
+            ...state,
+            settings: { ...state.settings, avatar: "custom" },
+            avatar_image: a.dataUrl as string,
+          }),
+        clear_avatar: () =>
+          (state = { ...state, settings: { ...state.settings, avatar: "menlo" }, avatar_image: null }),
         add_source: (a) =>
           (state = {
             ...state,

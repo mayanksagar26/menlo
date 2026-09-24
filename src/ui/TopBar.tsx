@@ -1,3 +1,4 @@
+import { avatarFor } from "../lib/avatars";
 import { useApp } from "../store/app";
 import { useUi } from "../store/ui";
 
@@ -12,7 +13,10 @@ import { useUi } from "../store/ui";
  */
 export function TopBar() {
   const { home, step, page, openPage, toggleProfile } = useUi();
-  const profileName = useApp((s) => s.view?.settings.profile_name ?? "");
+  const avatar = avatarFor(
+    useApp((s) => s.view?.settings.avatar),
+    useApp((s) => s.view?.avatar_image),
+  );
   const counter = home ? "Home" : `0${step + 1} / 04`;
 
   return (
@@ -42,10 +46,10 @@ export function TopBar() {
           type="button"
           onClick={toggleProfile}
           aria-label="Menu"
-          className="glass flex h-6 w-6 items-center justify-center rounded-full text-[10.5px] text-ink-86 transition-colors duration-200 hover:text-ink"
+          className="glass h-6 w-6 overflow-hidden rounded-full p-0 transition-opacity duration-200 hover:opacity-80"
           style={{ "--glass-fill": "var(--color-glass-sel)" } as React.CSSProperties}
         >
-          {(profileName.trim()[0] || "·").toUpperCase()}
+          <img src={avatar.src} alt="" className="h-full w-full object-cover" />
         </button>
       </div>
     </header>

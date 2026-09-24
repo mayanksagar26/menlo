@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AVATARS, avatarFor, CUSTOM_AVATAR, DEFAULT_AVATAR, squareImage } from "../lib/avatars";
 import { SELECTABLE_MODELS } from "../lib/copy";
 import type { DuplicatePolicy, Schedule } from "../lib/types";
 import { useApp } from "../store/app";
@@ -50,6 +51,7 @@ export function SettingsPage() {
             <span className="mb-2 block text-[11.5px] text-ink-60">Your name — Menlo greets you with it.</span>
             <NameField value={s.profile_name} onSave={(profile_name) => save({ profile_name })} />
           </label>
+          <AvatarPicker />
         </Section>
 
         <Section index={1} refs={sections} title="Working model" onEnter={setActive}>
@@ -170,6 +172,90 @@ export function SettingsPage() {
         </Section>
       </div>
     </Page>
+  );
+}
+
+/**
+ * The profile picture: Menlo's own icon, the Recess gang, or one of your own.
+ *
+ * An uploaded picture is cropped and downscaled to 256px here before it is sent, so
+ * what crosses to Rust is a few tens of kilobytes rather than a phone photo.
+ */
+function AvatarPicker() {
+  const view = useApp((s) => s.view);
+  const setAvatar = useApp((s) => s.setAvatar);
+  const uploadAvatar = useApp((s) => s.uploadAvatar);
+  const clearAvatar = useApp((s) => s.clearAvatar);
+  const file = useRef<HTMLInputElement>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const chosen = view?.settings.avatar ?? DEFAULT_AVATAR;
+  const uploaded = view?.avatar_image ?? null;
+  const current = avatarFor(chosen, uploaded);
+
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setProblem(null);
+    try {
+      await uploadAvatar(await squareImage(f));
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const options = uploaded ? [...AVATARS, { id: CUSTOM_AVATAR, label: "Your picture", src: uploaded }] : AVATARS;
+
+  return (
+    <div className="mt-6">
+      <span className="mb-2.5 block text-[11.5px] text-ink-60">
+        Your picture — it sits in the corner of the window. Menlo's own icon by default.
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        {options.map((a) => {
+          const on = a.id === current.id;
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => setAvatar(a.id)}
+              aria-label={a.label}
+              aria-pressed={on}
+              title={a.label}
+              className="glass h-11 w-11 overflow-hidden rounded-full p-0 transition-all duration-200"
+              style={
+                {
+                  "--glass-hair": on ? "rgba(255,255,255,0.55)" : "var(--color-hair)",
+                  transform: on ? "scale(1.04)" : "none",
+                  opacity: on ? 1 : 0.72,
+                  transitionTimingFunction: "var(--ease-menlo)",
+                } as React.CSSProperties
+              }
+            >
+              <img src={a.src} alt="" className="h-full w-full object-cover" />
+            </button>
+          );
+        })}
+
+        <button type="button" className="btn-glass ml-1" onClick={() => file.current?.click()}>
+          Upload…
+        </button>
+        {uploaded && (
+          <button type="button" className="btn-glass !text-ink-60" onClick={() => clearAvatar()}>
+            Remove
+          </button>
+        )}
+        <input
+          ref={file}
+          type="file"
+          accept="image/png,image/jpeg"
+          onChange={pick}
+          className="hidden"
+        />
+      </div>
+      {problem && <p className="mt-2 mb-0 text-[11px] text-ink-70">{problem}</p>}
+    </div>
   );
 }
 

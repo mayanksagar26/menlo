@@ -121,6 +121,20 @@ test("stages that have slid away cannot be reached by keyboard or screen reader"
   await expect(app.getByRole("heading", { name: /Pick the folders/ })).toBeVisible();
 });
 
+test("picking a profile picture saves it and shows it in the corner", async ({ app }) => {
+  await app.getByRole("button", { name: "Menu" }).click();
+  await app.getByRole("menuitem", { name: /Settings/ }).click();
+  await app.getByRole("button", { name: "Spinelli" }).click();
+
+  expect(await callsTo(app, "set_avatar")).toEqual([{ id: "spinelli" }]);
+  await expect(app.getByRole("button", { name: "Spinelli" })).toHaveAttribute("aria-pressed", "true");
+
+  // The corner shows that same picture. Compared by source rather than by filename:
+  // the build inlines a small SVG as a data URI, so there is no name to match on.
+  const picked = await app.getByRole("button", { name: "Spinelli" }).locator("img").getAttribute("src");
+  await expect(app.getByRole("button", { name: "Menu" }).locator("img")).toHaveAttribute("src", picked!);
+});
+
 test("a changed setting is saved, with the rest left as they were", async ({ app }) => {
   await app.getByRole("button", { name: "Menu" }).click();
   await app.getByRole("menuitem", { name: /Settings/ }).click();

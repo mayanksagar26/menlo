@@ -83,6 +83,9 @@ test("every screen renders without an error", async ({ app }) => {
   await app.getByRole("menuitem", { name: /Settings/ }).click();
   await settle();
   await shot("11-settings");
+  await app.getByRole("button", { name: "Spinelli" }).click();
+  await settle();
+  await shot("11b-profile-picture");
   await app.getByRole("button", { name: "Close" }).click();
 
   await app.getByRole("button", { name: "Menu" }).click();

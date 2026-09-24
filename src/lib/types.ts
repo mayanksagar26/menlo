@@ -35,6 +35,8 @@ export interface Settings {
   allow_installers: boolean;
   check_open_files: boolean;
   profile_name: string;
+  /** A preset's id, or "custom" for an uploaded picture. */
+  avatar: string;
   working_model: WorkingModel;
   schedule: Schedule;
   duplicates: DuplicatePolicy;
@@ -86,6 +88,8 @@ export interface AppView {
   settings: Settings;
   rules: FolderRuleView[];
   runs: BatchSummary[];
+  /** The uploaded picture as a data URL, when that is the one chosen. */
+  avatar_image: string | null;
 }
 
 export interface FolderSuggestion {

@@ -23,6 +23,10 @@ import type {
 export const getState = () => invoke<AppView>("get_state");
 export const saveSettings = (settings: Settings) => invoke<AppView>("save_settings", { settings });
 
+export const saveAvatar = (dataUrl: string) => invoke<AppView>("save_avatar", { dataUrl });
+export const setAvatar = (id: string) => invoke<AppView>("set_avatar", { id });
+export const clearAvatar = () => invoke<AppView>("clear_avatar");
+
 export const addSource = (path: string) => invoke<AppView>("add_source", { path });
 export const removeSource = (path: string) => invoke<AppView>("remove_source", { path });
 
