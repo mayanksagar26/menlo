@@ -10,6 +10,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
+  AgentInfo,
+  DeviceFolder,
   AppView,
   ExecuteOutcome,
   FolderSet,
@@ -43,12 +45,18 @@ export const deleteFolderSet = (id: string) => invoke<AppView>("delete_folder_se
 
 export const addFolderRule = (destinationKey: string, text: string) =>
   invoke<AppView>("add_folder_rule", { destinationKey, text });
+export const listDeviceFolders = () => invoke<DeviceFolder[]>("list_device_folders");
+export const addRuleAt = (path: string, text: string) => invoke<AppView>("add_rule_at", { path, text });
+export const forgetRule = (id: string) => invoke<AppView>("forget_rule", { id });
 export const removeFolderRule = (id: string) => invoke<AppView>("remove_folder_rule", { id });
 
 export const planRun = (sources: string[], destinations: string[], setLabel: string | null) =>
   invoke<Plan>("plan_run", { sources, destinations, setLabel });
 export const applyPlan = (plan: Plan) => invoke<ExecuteOutcome>("apply_plan", { plan });
 export const stopRun = () => invoke<void>("stop_run");
+
+export const detectCliAgents = () => invoke<AgentInfo[]>("detect_cli_agents");
+export const testCliAgent = () => invoke<string>("test_cli_agent");
 
 export const getRun = (batchId: string) => invoke<RunView>("get_run", { batchId });
 export const revertRun = (batchId: string) => invoke<RunView>("revert_run", { batchId });

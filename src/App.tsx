@@ -15,6 +15,7 @@ import { useApp } from "./store/app";
 import { CUSTOM, useUi } from "./store/ui";
 import { Ambient } from "./ui/Ambient";
 import { BottomBar } from "./ui/BottomBar";
+import { LaunchMark, useLaunch } from "./ui/Launch";
 import { ProfileMenu } from "./ui/ProfileMenu";
 import { TopBar } from "./ui/TopBar";
 
@@ -32,6 +33,7 @@ export default function App() {
   const error = useApp((s) => s.error);
   const boot = useApp((s) => s.boot);
   const dismissError = useApp((s) => s.dismissError);
+  const launch = useLaunch(view !== null);
 
   useEffect(() => {
     void boot();
@@ -45,16 +47,22 @@ export default function App() {
     if (first) ui.chooseSet(first);
   }, [view, ui]);
 
+  // Until the launch opens, the surface is hidden so the window shows as glass,
+  // and home is not mounted yet so its entrance plays where it can be seen.
   return (
+    <>
     <div
       className="relative flex h-full flex-col overflow-hidden"
+      data-launch={launch}
       style={{ background: "linear-gradient(180deg,#0C0E13 0%,#07080B 100%)" }}
     >
       <Ambient />
 
       <TopBar />
 
-      <main className="relative z-10 min-h-0 flex-1">{view && (ui.home ? <Home /> : <Flow />)}</main>
+      <main className="relative z-10 min-h-0 flex-1">
+        {view && launch !== "logo" && (ui.home ? <Home intro={launch === "open"} /> : <Flow />)}
+      </main>
 
       <BottomBar />
 
@@ -91,5 +99,8 @@ export default function App() {
       {ui.suggest.open && <SuggestSheet />}
       {ui.ruleFor && <RulePopup destKey={ui.ruleFor} />}
     </div>
+
+    <LaunchMark phase={launch} />
+    </>
   );
 }

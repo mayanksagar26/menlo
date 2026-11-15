@@ -38,6 +38,10 @@ export interface Settings {
   /** A preset's id, or "custom" for an uploaded picture. */
   avatar: string;
   working_model: WorkingModel;
+  /** A CLI preset id (`claude`, `codex`, …), `custom`, or "" for the first one found. */
+  cli_agent: string;
+  /** The command line used when `cli_agent` is `custom`; the prompt goes in on stdin. */
+  cli_command: string;
   schedule: Schedule;
   duplicates: DuplicatePolicy;
   rename_unclear: boolean;
@@ -67,6 +71,25 @@ export interface FolderRuleView {
   reading: string;
 }
 
+/** A pattern rule: one the user made, or one Menlo learned from approved moves. */
+export interface MatcherRuleView {
+  id: string;
+  destination_key: string;
+  match_expr: string;
+  /** The pattern in words. */
+  human: string;
+  learned: boolean;
+  hits: number;
+}
+
+/** A folder on this Mac, listed for Rules memory. `key` is set when Menlo files into it. */
+export interface DeviceFolder {
+  path: string;
+  label: string;
+  key: string | null;
+  children: DeviceFolder[];
+}
+
 export interface BatchSummary {
   batch_id: string;
   started_at: string;
@@ -87,6 +110,7 @@ export interface AppView {
   folder_sets: FolderSet[];
   settings: Settings;
   rules: FolderRuleView[];
+  matchers?: MatcherRuleView[];
   runs: BatchSummary[];
   /** The uploaded picture as a data URL, when that is the one chosen. */
   avatar_image: string | null;
@@ -158,6 +182,27 @@ export interface Plan {
   skipped: { name: string; reason: SkipReason }[];
   truncated: boolean;
   prompt_version: string | null;
+  /** What the model pass did, or why it couldn't run. Absent for rules-only plans. */
+  model_note?: string | null;
+  /** New subfolders Menlo suggests for files nothing fits yet. */
+  folder_proposals?: FolderProposal[];
+}
+
+/** A subfolder worth making. Nothing is created until the user accepts it. */
+export interface FolderProposal {
+  parent_key: string;
+  name: string;
+  entry_ids: string[];
+  reason: string;
+  /** The rule remembered once the run is approved, e.g. `glob:*invoice*`. */
+  match_expr: string | null;
+}
+
+export interface AgentInfo {
+  id: string;
+  label: string;
+  /** Where it was found; null when it isn't installed. */
+  path: string | null;
 }
 
 // ── A run ────────────────────────────────────────────────────────────────────

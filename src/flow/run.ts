@@ -44,7 +44,9 @@ export async function beginRun() {
 export function afterDuplicates() {
   const ui = useUi.getState();
   ui.set({ dupesOpen: false });
-  if (useApp.getState().view?.settings.ask_before_moving) {
+  // New folders can only be accepted in the preview, so it opens when there are any.
+  const app = useApp.getState();
+  if (app.view?.settings.ask_before_moving || (app.plan?.folder_proposals?.length ?? 0) > 0) {
     ui.set({ confirmOpen: true });
   } else {
     void startMove();

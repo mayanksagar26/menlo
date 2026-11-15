@@ -11,6 +11,86 @@ use crate::rules::{self, RuleSet};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
+/// A rule Menlo matches by pattern — one you made, or one it learned from what you
+/// approved — shown so its memory is never a black box.
+#[derive(Debug, Serialize)]
+pub struct MatcherRuleView {
+    pub id: String,
+    pub destination_key: String,
+    pub match_expr: String,
+    /// The pattern in words: "the name matches *invoice*".
+    pub human: String,
+    pub learned: bool,
+    pub hits: u64,
+}
+
+/// A folder on this Mac, for Rules memory. Read from disk when that page asks, and
+/// only listed — reading it changes nothing.
+#[derive(Debug, Serialize)]
+pub struct DeviceFolder {
+    pub path: PathBuf,
+    pub label: String,
+    /// Its destination key, when Menlo already files into it.
+    pub key: Option<String>,
+    pub children: Vec<DeviceFolder>,
+}
+
+/// Home folders that are not the user's own files: system folders, and the ones
+/// developer tools make (Go's workspace, a stray node_modules, app data folders).
+/// Hidden folders are never listed either. Only hidden from the list — never touched.
+const SKIP_IN_HOME: &[&str] = &[
+    "Library",
+    "Applications",
+    "Public",
+    "node_modules",
+    "go",
+    "conductor",
+    "browser-pass",
+];
+
+/// Every folder in the home folder with its subfolders (one level), plus any folder
+/// Menlo files into that lives elsewhere.
+pub fn device_folders(config: &Config) -> Result<Vec<DeviceFolder>> {
+    let home = config::home()?;
+    let key_of = |p: &Path| config.destinations.iter().find(|d| d.path == p).map(|d| d.key.clone());
+    let node = |p: PathBuf| -> DeviceFolder {
+        let mut children: Vec<DeviceFolder> = config::existing_subfolders(&p, 500)
+            .into_iter()
+            .map(|c| DeviceFolder { label: label_of(&c), key: key_of(&c), path: c, children: Vec::new() })
+            .collect();
+        // A subfolder Menlo knows about but which has gone from disk still shows, so
+        // its rules can be seen and removed.
+        if let Some(parent) = key_of(&p) {
+            for d in config.subfolders_of(&parent) {
+                if !children.iter().any(|c| c.path == d.path) {
+                    children.push(DeviceFolder {
+                        path: d.path.clone(),
+                        label: d.label.clone(),
+                        key: Some(d.key.clone()),
+                        children: Vec::new(),
+                    });
+                }
+            }
+        }
+        children.sort_by_key(|c| c.label.to_lowercase());
+        DeviceFolder { label: label_of(&p), key: key_of(&p), path: p, children }
+    };
+
+    let mut tops: Vec<DeviceFolder> = config::existing_subfolders(&home, 500)
+        .into_iter()
+        .filter(|p| !SKIP_IN_HOME.contains(&label_of(p).as_str()))
+        .map(node)
+        .collect();
+    for d in config.top_level() {
+        if !tops.iter().any(|t| t.path == d.path) {
+            tops.push(node(d.path.clone()));
+        }
+    }
+    // Folders Menlo already uses first, then the rest by name.
+    tops.sort_by_key(|t| (t.key.is_none(), t.label.to_lowercase()));
+    Ok(tops)
+}
+
 #[derive(Debug, Serialize)]
 pub struct SourceView {
     pub path: PathBuf,
@@ -40,6 +120,8 @@ pub struct AppView {
     pub folder_sets: Vec<FolderSet>,
     pub settings: Settings,
     pub rules: Vec<FolderRuleView>,
+    /// Pattern rules: the user's own and the ones Menlo learned.
+    pub matchers: Vec<MatcherRuleView>,
     pub runs: Vec<BatchSummary>,
     /// The uploaded profile picture as a `data:` URL, when that is the one chosen.
     /// Read only then, so an unused file is not encoded on every call.
@@ -74,6 +156,23 @@ pub fn app_view(config: &Config, ruleset: &RuleSet) -> Result<AppView> {
         })
         .collect();
 
+    let matchers = ruleset
+        .rules
+        .iter()
+        .filter(|r| r.source != rules::RuleSource::Builtin)
+        .filter(|r| config.destination(&r.destination_key).is_some())
+        .map(|r| MatcherRuleView {
+            id: r.id.clone(),
+            destination_key: r.destination_key.clone(),
+            match_expr: r.match_expr.clone(),
+            human: rules::Matcher::parse(&r.match_expr)
+                .map(|m| m.human())
+                .unwrap_or_else(|_| r.match_expr.clone()),
+            learned: r.source == rules::RuleSource::Learned,
+            hits: r.hits,
+        })
+        .collect();
+
     Ok(AppView {
         home: config::home()?,
         sources,
@@ -81,6 +180,7 @@ pub fn app_view(config: &Config, ruleset: &RuleSet) -> Result<AppView> {
         folder_sets: config.folder_sets.clone(),
         settings: config.settings.clone(),
         rules,
+        matchers,
         runs: journal::list_batches()?,
         avatar_image: if config.settings.avatar == crate::avatar::CUSTOM {
             crate::avatar::load()?

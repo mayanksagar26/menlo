@@ -14,6 +14,8 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:1420",
     trace: "on-first-retry",
+    // Skips the launch animation (ui/Launch.tsx), so every test starts on a settled home.
+    reducedMotion: "reduce",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {

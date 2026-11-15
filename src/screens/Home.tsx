@@ -12,10 +12,13 @@ import { DashedChip, Eyebrow } from "../ui/primitives";
  * re-points the greeting line and the three figures at that set rather than starting
  * anything — the move is always the button at the bottom, never a click up here.
  */
-export function Home() {
+export function Home({ intro = false }: { intro?: boolean }) {
   const ui = useUi();
   const view = useApp((s) => s.view);
   const [hovered, setHovered] = useState<string | null>(null);
+  // Fixed at mount: the launch moves on before the last of the entrance has played,
+  // and swapping animations mid-flight would restart them.
+  const [playIntro] = useState(intro);
 
   if (!view) return null;
 
@@ -26,20 +29,39 @@ export function Home() {
   const count = fileCount(view, ui);
   const first = view.settings.profile_name.trim().split(" ")[0];
   const lastRun = view.runs[0]?.started_at;
+  const words = `${greeting()}${first ? `, ${first}` : ""}.`.split(" ");
+  // After the greeting, each block enters a beat behind the one above it.
+  const after = 560 + words.length * 60;
+  const beat = (i: number) => enter(playIntro, after + i * 130);
 
   return (
     <div className="relative flex h-full flex-col items-center justify-center overflow-y-auto px-10 py-8">
       <DriftField />
 
-      <div className="anim-rise relative flex w-full max-w-[720px] flex-col items-center">
+      <div
+        className={`relative flex w-full max-w-[720px] flex-col items-center ${playIntro ? "" : "anim-rise"}`}
+      >
         <h1
           className="m-0 text-center text-[52px] leading-[1.1] tracking-[-0.04em] text-ink"
           style={{ fontWeight: 400 }}
         >
-          {greeting()}
-          {first ? `, ${first}` : ""}.
+          {playIntro
+            ? words.map((word, i) => (
+                <span
+                  key={i}
+                  className="anim-word inline-block"
+                  style={{ animationDelay: `${260 + i * 90}ms` }}
+                >
+                  {word}
+                  {i < words.length - 1 ? "\u00a0" : ""}
+                </span>
+              ))
+            : words.join(" ")}
         </h1>
-        <p className="mt-3.5 max-w-[460px] text-center text-[12.5px] leading-[1.6] text-ink-66">
+        <p
+          className={`mt-3.5 max-w-[460px] text-center text-[12.5px] leading-[1.6] text-ink-66 ${beat(0).className}`}
+          style={beat(0).style}
+        >
           {sources.length === 0
             ? "Pick a folder set below, or start from nothing with Custom."
             : count === 0
@@ -49,7 +71,10 @@ export function Home() {
                 }. Menlo can put them away in about a minute.`}
         </p>
 
-        <div className="glass mt-8 flex rounded-[14px] p-1">
+        <div
+          className={`glass mt-8 flex rounded-[14px] p-1 ${beat(1).className}`}
+          style={beat(1).style}
+        >
           <Stat value={String(count)} label={count === 1 ? "File" : "Files"} />
           <Divider />
           <Stat
@@ -61,8 +86,13 @@ export function Home() {
         </div>
 
         <div className="mt-10 w-full text-center">
-          <Eyebrow>Source folders</Eyebrow>
-          <div className="mt-3.5 flex flex-wrap items-start justify-center gap-2.5">
+          <div className={beat(2).className} style={beat(2).style}>
+            <Eyebrow>Source folders</Eyebrow>
+          </div>
+          <div
+            className={`mt-3.5 flex flex-wrap items-start justify-center gap-2.5 ${beat(3).className}`}
+            style={beat(3).style}
+          >
             {pinned.map((set) => (
               <SetPill
                 key={set.id}
@@ -88,6 +118,15 @@ export function Home() {
       </div>
     </div>
   );
+}
+
+/**
+ * The launch entrance for one block: a slower, longer rise than `anim-rise`. The
+ * pills get it on their row rather than on each pill, because an animation that
+ * fills `both` would pin `transform` and swallow the pill's own hover lift.
+ */
+function enter(on: boolean, delayMs: number): { className: string; style?: React.CSSProperties } {
+  return on ? { className: "anim-enter", style: { animationDelay: `${delayMs}ms` } } : { className: "" };
 }
 
 function greeting(now: Date = new Date()) {

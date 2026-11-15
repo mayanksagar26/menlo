@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AVATARS, avatarFor, CUSTOM_AVATAR, DEFAULT_AVATAR, squareImage } from "../lib/avatars";
 import { SELECTABLE_MODELS } from "../lib/copy";
-import type { DuplicatePolicy, Schedule } from "../lib/types";
+import { detectCliAgents, testCliAgent } from "../lib/ipc";
+import type { AgentInfo, DuplicatePolicy, Schedule } from "../lib/types";
 import { useApp } from "../store/app";
 import { AboutIcon, ModelIcon, ProfileIcon, RunningIcon } from "../ui/glyphs";
 import { Segmented, Toggle } from "../ui/primitives";
@@ -91,6 +92,7 @@ export function SettingsPage() {
               );
             })}
           </div>
+          {s.working_model === "cli_agent" && <CliAgentPicker />}
         </Section>
 
         <Section index={2} refs={sections} title="Running" onEnter={setActive}>
@@ -256,6 +258,130 @@ function AvatarPicker() {
       </div>
       {problem && <p className="mt-2 mb-0 text-[11px] text-ink-70">{problem}</p>}
     </div>
+  );
+}
+
+/**
+ * Which CLI agent the CLI Agent model drives. Lists the ones Menlo knows with where
+ * each was found, plus "Other" for any command that reads a prompt on stdin.
+ */
+function CliAgentPicker() {
+  const view = useApp((s) => s.view);
+  const save = useApp((s) => s.saveSettings);
+  const [agents, setAgents] = useState<AgentInfo[] | null>(null);
+  const [check, setCheck] = useState<{ busy: boolean; ok?: boolean; text?: string }>({ busy: false });
+
+  useEffect(() => {
+    detectCliAgents()
+      .then(setAgents)
+      .catch(() => setAgents([]));
+  }, []);
+
+  if (!view) return null;
+  const s = view.settings;
+  const installed = agents?.filter((a) => a.path) ?? [];
+  // An empty choice means "the first one found", so show that one as picked.
+  const chosen = s.cli_agent || installed[0]?.id || "";
+
+  function pick(id: string) {
+    setCheck({ busy: false });
+    save({ cli_agent: id });
+  }
+
+  async function runCheck() {
+    setCheck({ busy: true });
+    try {
+      setCheck({ busy: false, ok: true, text: await testCliAgent() });
+    } catch (err) {
+      const e = err as { message?: string } | string;
+      setCheck({ busy: false, ok: false, text: typeof e === "string" ? e : (e.message ?? String(err)).replace(/^configuration: /, "") });
+    }
+  }
+
+  return (
+    <div className="glass mt-3 rounded-[14px] p-3.5">
+      <p className="m-0 mb-2.5 text-[11.5px] text-ink-60">
+        Which CLI to use. Only files your rules can't place are sent — their names, types, sizes and dates, never
+        their contents or where they live.
+      </p>
+      {agents === null ? (
+        <p className="m-0 text-[11.5px] text-ink-60">Looking for CLI agents on this Mac…</p>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {[...agents, { id: "custom", label: "Other command", path: null } as AgentInfo].map((a) => {
+            const custom = a.id === "custom";
+            const usable = custom || !!a.path;
+            const on = chosen === a.id;
+            return (
+              <button
+                key={a.id}
+                type="button"
+                disabled={!usable}
+                onClick={() => pick(a.id)}
+                aria-pressed={on}
+                className="flex items-center gap-3 rounded-[10px] px-2.5 py-2 text-left transition-colors duration-200 disabled:cursor-default"
+                style={{
+                  background: on ? "var(--color-glass-sel)" : "transparent",
+                  opacity: usable ? 1 : 0.5,
+                  transitionTimingFunction: "var(--ease-menlo)",
+                }}
+              >
+                <span
+                  className="h-[9px] w-[9px] shrink-0 rounded-full border"
+                  style={{
+                    background: on ? "var(--color-ink)" : "transparent",
+                    borderColor: on ? "var(--color-ink)" : "rgba(255,255,255,0.3)",
+                  }}
+                />
+                <span className="flex-1 text-[12.5px] text-ink-86">{a.label}</span>
+                <span className="selectable max-w-[300px] truncate text-[10.5px] text-ink-60">
+                  {custom ? "any command that reads stdin" : (a.path ?? "not installed")}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {chosen === "custom" && (
+        <label className="mt-3 block">
+          <span className="mb-1.5 block text-[11px] text-ink-60">
+            The command, e.g. <code>qwen -p</code> or <code>aichat</code>. It runs directly, not in a shell, with the
+            prompt on stdin, and must print the JSON reply.
+          </span>
+          <CommandField value={s.cli_command} onSave={(cli_command) => save({ cli_command })} />
+        </label>
+      )}
+
+      <div className="mt-3 flex items-center gap-3">
+        <button type="button" className="btn-glass" disabled={check.busy || !chosen} onClick={runCheck}>
+          {check.busy ? "Checking…" : "Check it works"}
+        </button>
+        {check.text && (
+          <span className="selectable min-w-0 flex-1 text-[11px] leading-[1.5] text-ink-70">
+            {check.ok ? "✓ " : ""}
+            {check.text}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CommandField({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const commit = () => draft.trim() !== value && onSave(draft.trim());
+  return (
+    <input
+      className="field max-w-[360px] font-mono"
+      value={draft}
+      placeholder="command --flags"
+      spellCheck={false}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+    />
   );
 }
 

@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window. `dialog:allow-open` is the folder picker behind Add folder; nothing else in the dialog plugin is granted.",
+  "description": "Capability for the main window. `dialog:allow-open` is the folder picker behind Add folder; nothing else in the dialog plugin is granted. `core:window:allow-start-dragging` lets the top bar (`data-tauri-drag-region`) move the window.",
   "windows": [
     "main"
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "opener:default",
     "dialog:allow-open"
   ]

@@ -47,6 +47,8 @@ export const VIEW: AppView = {
     profile_name: "Ada Lovelace",
     avatar: "menlo",
     working_model: "fully_local",
+    cli_agent: "",
+    cli_command: "",
     schedule: "manual",
     duplicates: "ask",
     rename_unclear: true,
@@ -174,6 +176,17 @@ export async function installIpc(page: Page, opts: { picked?: string[] } = {}) {
 
       const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
         get_state: () => state,
+        list_device_folders: () =>
+          state.destinations
+            .filter((d) => !d.parent)
+            .map((d) => ({
+              path: d.path,
+              label: d.label,
+              key: d.key,
+              children: state.destinations
+                .filter((c) => c.parent === d.key)
+                .map((c) => ({ path: c.path, label: c.label, key: c.key, children: [] })),
+            })),
         save_settings: (a) => (state = { ...state, settings: a.settings as typeof state.settings }),
         set_avatar: (a) =>
           (state = { ...state, settings: { ...state.settings, avatar: a.id as string } }),

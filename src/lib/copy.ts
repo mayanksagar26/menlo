@@ -79,10 +79,10 @@ export const MODELS: {
   {
     value: "cli_agent",
     title: "CLI Agent",
-    when: "Later, optional",
-    ready: false,
+    when: "Works today",
+    ready: true,
     selectable: true,
-    body: "Claude Code, Codex or another CLI agent you already have, driven in headless mode as a classifier only: text in, text out, no tools and no access to your files.",
+    body: "Claude Code, Codex, Gemini CLI, opencode or any other CLI agent you already have, driven in headless mode for the files your rules can't place: names and types in, a plan out — no tools and no access to your files.",
     gains: "Nothing extra to install if you already code with one. Menlo never needs it — it is an alternative to Gemma, not a requirement.",
   },
   {

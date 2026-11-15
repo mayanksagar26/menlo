@@ -80,6 +80,15 @@
     overscroll-behavior: none;
   }
 
+  /* In the app the window is transparent over a frosted macOS material
+     (tauri.conf.json), which is the glass the launch mark sits on. The shell
+     paints its own background from then on; in a plain browser the page keeps
+     the desk colour. */
+  html[data-transparent],
+  html[data-transparent] body {
+    background: transparent;
+  }
+
   /* Filenames and paths are the one thing worth copying out. */
   .selectable,
   input,
@@ -255,6 +264,159 @@
   }
   .anim-fade-in {
     animation: menlo-fade-in 280ms var(--ease-menlo) both;
+  }
+  .anim-word {
+    animation: menlo-word 900ms var(--ease-menlo) both;
+  }
+  .anim-enter {
+    animation: menlo-enter 720ms var(--ease-menlo) both;
+  }
+}
+
+/* ── Launch ─────────────────────────────────────────────────────────────
+   The window opens as frosted glass — the macOS material the window is given
+   in tauri.conf.json — with the mark alone in the middle. Then the app fades
+   up over the glass while the mark lifts away and home settles in. See
+   ui/Launch.tsx.
+   ──────────────────────────────────────────────────────────────────── */
+@layer components {
+  /* Hidden, so the window's glass is all there is. */
+  [data-launch="logo"] {
+    opacity: 0;
+  }
+  [data-launch="open"] {
+    animation: menlo-surface-in 700ms var(--ease-menlo) 120ms both;
+  }
+  [data-launch="open"] > header {
+    animation: menlo-bar-down 480ms var(--ease-menlo) 300ms both;
+  }
+  [data-launch="open"] > footer {
+    animation: menlo-bar-up 480ms var(--ease-menlo) 300ms both;
+  }
+
+  /* A light darkening of the glass so the mark reads against a bright desktop. */
+  .launch-tint {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse at center,
+      rgba(12, 14, 19, 0.12) 0%,
+      rgba(12, 14, 19, 0.34) 100%
+    );
+    animation: menlo-fade 500ms var(--ease-menlo) both;
+  }
+  .launch-tint-out {
+    animation: menlo-fade 500ms var(--ease-menlo) reverse both;
+  }
+
+  .launch-mark-in {
+    position: relative;
+    animation: menlo-mark-in 900ms var(--ease-menlo) both;
+  }
+  .launch-mark-out {
+    position: relative;
+    animation: menlo-mark-out 460ms var(--ease-menlo) both;
+  }
+  /* A soft light that breathes behind the mark while the backend answers. */
+  .launch-halo {
+    position: absolute;
+    inset: -70px;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle,
+      rgba(96, 132, 214, 0.42) 0%,
+      rgba(142, 107, 214, 0.18) 38%,
+      transparent 68%
+    );
+    animation: menlo-halo 2.4s ease-in-out 400ms infinite;
+  }
+}
+
+@keyframes menlo-surface-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes menlo-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes menlo-bar-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+@keyframes menlo-bar-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes menlo-mark-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+    filter: blur(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+@keyframes menlo-mark-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.18);
+    filter: blur(8px);
+  }
+}
+@keyframes menlo-halo {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+/* Home's launch entrance: the greeting word by word out of a blur, then each
+   block below it on a slower, longer rise than the everyday one. */
+@keyframes menlo-word {
+  from {
+    opacity: 0;
+    transform: translateY(0.32em);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+@keyframes menlo-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

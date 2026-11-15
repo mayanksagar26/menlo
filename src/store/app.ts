@@ -16,6 +16,7 @@ import {
   type Destination,
   type DuplicateChoice,
   type ExecuteOutcome,
+  type FolderProposal,
   type FolderSet,
   type FolderSuggestion,
   type Plan,
@@ -60,6 +61,8 @@ interface AppStore {
 
   addRule: (key: string, text: string) => Promise<void>;
   removeRule: (id: string) => Promise<void>;
+  addRuleAt: (path: string, text: string) => Promise<void>;
+  forgetRule: (id: string) => Promise<void>;
 
   saveSettings: (patch: Partial<Settings>) => Promise<void>;
   setAvatar: (id: string) => Promise<void>;
@@ -69,6 +72,8 @@ interface AppStore {
   makePlan: (sources: string[], dests: string[], label: string | null) => Promise<Plan | null>;
   choose: (entryId: string, choice: DuplicateChoice) => void;
   chooseAll: (choice: DuplicateChoice) => void;
+  acceptProposal: (p: FolderProposal) => Promise<void>;
+  dismissProposal: (p: FolderProposal) => void;
   apply: () => Promise<ExecuteOutcome | null>;
   stop: () => Promise<void>;
   clearRun: () => void;
@@ -123,6 +128,8 @@ export const useApp = create<AppStore>((set, get) => {
 
     addRule: (key, text) => mutate(() => ipc.addFolderRule(key, text)),
     removeRule: (id) => mutate(() => ipc.removeFolderRule(id)),
+    addRuleAt: (path, text) => mutate(() => ipc.addRuleAt(path, text)),
+    forgetRule: (id) => mutate(() => ipc.forgetRule(id)),
 
     saveSettings: async (patch) => {
       const view = get().view;
@@ -144,6 +151,44 @@ export const useApp = create<AppStore>((set, get) => {
       if (!plan) return null;
       set({ plan });
       return plan;
+    },
+
+    // Make the folder, then file the group into it. The rule it carries is learned
+    // only when the run is approved, like any other suggestion.
+    acceptProposal: async (p) => {
+      const view = await call(() => ipc.createSubfolder(p.parent_key, p.name));
+      const plan = get().plan;
+      if (!view || !plan) return;
+      const made = view.destinations.find((d) => d.parent === p.parent_key && d.label === p.name);
+      if (!made) return;
+      const ids = new Set(p.entry_ids);
+      set({
+        view,
+        plan: {
+          ...plan,
+          folder_proposals: (plan.folder_proposals ?? []).filter((q) => q !== p),
+          entries: plan.entries.map((e) =>
+            ids.has(e.id)
+              ? {
+                  ...e,
+                  action: "move",
+                  destination_key: made.key,
+                  included: true,
+                  confidence: 1,
+                  resolved_by: "deterministic",
+                  reason: `Into the new folder ${p.name}.`,
+                  suggest_rule: p.match_expr ? { match: p.match_expr, destination_key: made.key } : null,
+                }
+              : e,
+          ),
+        },
+      });
+    },
+
+    dismissProposal: (p) => {
+      const plan = get().plan;
+      if (!plan) return;
+      set({ plan: { ...plan, folder_proposals: (plan.folder_proposals ?? []).filter((q) => q !== p) } });
     },
 
     choose: (entryId, choice) => {

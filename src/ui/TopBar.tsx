@@ -6,8 +6,10 @@ import { useUi } from "../store/ui";
  * 56px of glass across the top: identity on the left, where-am-I on the right.
  *
  * The bar is also the window's drag region. macOS keeps its own traffic lights over
- * the left corner (`titleBarStyle: "Overlay"`): three 12px buttons on a 20px pitch
- * starting at x=20, so they end at x=72. The wordmark starts at 104 to leave a clear
+ * the left corner (`titleBarStyle: "Overlay"`), placed by `trafficLightPosition` in
+ * tauri.conf.json so they sit centred in this bar: three 12px buttons on a 20px pitch
+ * starting at x=20, so they end at x=72. Without that setting macOS puts them in its
+ * own 28px title row, above the wordmark rather than beside it. The wordmark starts at 104 to leave a clear
  * gutter rather than crowding them — this window is small and sits over other work,
  * so the two sets of controls are read together and must not look like one row.
  */

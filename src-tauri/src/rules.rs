@@ -137,7 +137,7 @@ impl Matcher {
         }
     }
 
-    fn human(&self) -> String {
+    pub fn human(&self) -> String {
         match self {
             Matcher::Ext(e) => format!("a .{e} file"),
             Matcher::Glob(p) => format!("the name matches {p}"),
@@ -490,6 +490,7 @@ pub fn build_plan_at(scan: &Scan, config: &Config, ruleset: &RuleSet, now: DateT
                     overridden: false,
                     duplicate: None,
                     on_duplicate: None,
+                    suggest_folder: None,
                 },
                 None => PlanEntry {
                     id: item.entry.id.clone(),
@@ -507,6 +508,7 @@ pub fn build_plan_at(scan: &Scan, config: &Config, ruleset: &RuleSet, now: DateT
                     overridden: false,
                     duplicate: None,
                     on_duplicate: None,
+                    suggest_folder: None,
                 },
             },
         )
@@ -673,35 +675,10 @@ fn capitalise(s: &str) -> String {
 
 /// §1.2 tier 2, the core product loop: crystallise the approved decisions.
 ///
-/// Only entries the user left alone are learned from — an overridden destination means
-/// the suggestion was wrong, and learning it would bake in the mistake.
+/// The care taken over what is kept — no broad rules, no repeats, latest decision
+/// wins, alike rules folded together — lives in `memory`.
 pub fn learn_from_approved(plan: &Plan, ruleset: &mut RuleSet) -> Vec<Rule> {
-    let mut added = Vec::new();
-    for e in plan.entries.iter() {
-        if !e.is_actionable() || e.overridden {
-            continue;
-        }
-        let Some(suggestion) = &e.suggest_rule else {
-            continue;
-        };
-        // A suggestion that does not parse is a suggestion we refuse to persist.
-        if Matcher::parse(&suggestion.match_expr).is_err() {
-            continue;
-        }
-        // Only ever learn a rule that points where the user actually approved.
-        if Some(&suggestion.destination_key) != e.destination_key.as_ref() {
-            continue;
-        }
-        let rule = Rule::new(
-            &suggestion.match_expr,
-            &suggestion.destination_key,
-            RuleSource::Learned,
-        );
-        if ruleset.insert(rule.clone()) {
-            added.push(rule);
-        }
-    }
-    added
+    crate::memory::learn_from_approved(plan, ruleset)
 }
 
 #[cfg(test)]
@@ -884,7 +861,7 @@ mod tests {
         plan.entries[0].destination_key = Some("finance".into());
         plan.entries[0].included = true;
         plan.entries[0].suggest_rule = Some(SuggestRule {
-            match_expr: "glob:a*.pdf".into(),
+            match_expr: "glob:alpha*.pdf".into(),
             destination_key: "finance".into(),
         });
 
@@ -894,7 +871,7 @@ mod tests {
         plan.entries[1].included = true;
         plan.entries[1].overridden = true;
         plan.entries[1].suggest_rule = Some(SuggestRule {
-            match_expr: "glob:b*.pdf".into(),
+            match_expr: "glob:bravo*.pdf".into(),
             destination_key: "finance".into(),
         });
 
@@ -903,7 +880,7 @@ mod tests {
         plan.entries[2].destination_key = Some("finance".into());
         plan.entries[2].included = false;
         plan.entries[2].suggest_rule = Some(SuggestRule {
-            match_expr: "glob:c*.pdf".into(),
+            match_expr: "glob:charlie*.pdf".into(),
             destination_key: "finance".into(),
         });
 
@@ -911,7 +888,7 @@ mod tests {
         let added = learn_from_approved(&plan, &mut set);
 
         assert_eq!(added.len(), 1);
-        assert_eq!(added[0].match_expr, "glob:a*.pdf");
+        assert_eq!(added[0].match_expr, "glob:alpha*.pdf");
         assert_eq!(set.learned().count(), 1);
     }
 
@@ -940,7 +917,7 @@ mod tests {
         plan.entries[0].destination_key = Some("finance".into());
         plan.entries[0].included = true;
         plan.entries[0].suggest_rule = Some(SuggestRule {
-            match_expr: "ext:pdf".into(),
+            match_expr: "glob:invoice*".into(),
             destination_key: "finance".into(),
         });
 

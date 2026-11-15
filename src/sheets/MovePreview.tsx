@@ -17,6 +17,9 @@ export function MovePreview() {
   const view = useApp((s) => s.view);
   const plan = useApp((s) => s.plan);
   const ui = useUi();
+  const acceptProposal = useApp((s) => s.acceptProposal);
+  const dismissProposal = useApp((s) => s.dismissProposal);
+  const proposals = plan?.folder_proposals ?? [];
 
   const entries = actionable(plan);
   // Kept duplicates do not move, so they are not "landings".
@@ -48,6 +51,9 @@ export function MovePreview() {
           {sub.length ? `${sub.join(" · ")}. ` : ""}Nothing is overwritten, and the whole run can be sent back
           from Runs.
         </p>
+        {plan?.model_note && (
+          <p className="mt-1.5 mb-0 text-[11.5px] leading-[1.6] text-ink-70">{plan.model_note}</p>
+        )}
       </div>
 
       {/* A block container, not a flex column: a flex child would compress these rows
@@ -83,6 +89,31 @@ export function MovePreview() {
             </div>
           );
         })}
+
+        {proposals.length > 0 && (
+          <div className="mt-2 mb-1 px-3">
+            <p className="eyebrow m-0 mb-2">New folders Menlo suggests</p>
+            {proposals.map((p) => (
+              <div key={`${p.parent_key}/${p.name}`} className="flex items-center gap-3 py-1.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] text-ink-86">
+                    {pathLabel(view, p.parent_key)} / {p.name}
+                  </span>
+                  <span className="block truncate text-[11px] text-ink-60">
+                    {p.reason}
+                    {p.match_expr ? " Menlo will remember this for next time." : ""}
+                  </span>
+                </span>
+                <button type="button" className="btn-glass !text-ink-60" onClick={() => dismissProposal(p)}>
+                  Not now
+                </button>
+                <button type="button" className="btn-glass" onClick={() => acceptProposal(p)}>
+                  Create
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {trashed.length > 0 && (
           <DisclosureRow

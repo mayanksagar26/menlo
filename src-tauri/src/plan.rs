@@ -53,6 +53,28 @@ pub struct RawPlanEntry {
     pub reason: String,
     #[serde(default)]
     pub suggest_rule: Option<SuggestRule>,
+    /// A new subfolder this file and others like it deserve, by name only. Used with
+    /// `needs_review` when no supplied destination fits. Never a path.
+    #[serde(default)]
+    pub suggest_folder: Option<String>,
+}
+
+/// A subfolder Menlo thinks a group of files deserves. Nothing is created until the
+/// user accepts it in the preview; accepting creates the folder, files the group into
+/// it, and — once the run is approved — remembers `match_expr` as a learned rule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderProposal {
+    /// The destination the new folder would sit inside.
+    pub parent_key: String,
+    /// The new folder's name. Passes `validate_rename`.
+    pub name: String,
+    pub entry_ids: Vec<String>,
+    /// One sentence on why these belong together.
+    pub reason: String,
+    /// The rule to remember once accepted, e.g. `glob:*invoice*`. Absent when the
+    /// group shares nothing a rule could catch next time.
+    #[serde(default)]
+    pub match_expr: Option<String>,
 }
 
 /// How a file relates to what is already at its destination.
@@ -115,6 +137,9 @@ pub struct PlanEntry {
     /// The user's decision about `duplicate`. `None` follows the Duplicates setting.
     #[serde(default)]
     pub on_duplicate: Option<DuplicateChoice>,
+    /// A model's idea for a new folder name, carried until proposals are built.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggest_folder: Option<String>,
 }
 
 impl PlanEntry {
@@ -140,6 +165,13 @@ pub struct Plan {
     pub truncated: bool,
     /// Which prompt template produced the LLM portion, if any (Phase 2, task 10).
     pub prompt_version: Option<String>,
+    /// One line about the model pass, when there was one: what it placed, or why it
+    /// could not run and the plan is rules-only. Shown on the preview.
+    #[serde(default)]
+    pub model_note: Option<String>,
+    /// New subfolders worth making for files nothing fits yet.
+    #[serde(default)]
+    pub folder_proposals: Vec<FolderProposal>,
 }
 
 impl Plan {
@@ -153,6 +185,8 @@ impl Plan {
             skipped: scan.skipped.clone(),
             truncated: scan.truncated,
             prompt_version: None,
+            model_note: None,
+            folder_proposals: Vec::new(),
         }
     }
 
@@ -255,6 +289,12 @@ pub fn validate(raw: &[RawPlanEntry], scan: &Scan, destination_keys: &[String]) 
             }
         }
 
+        if let Some(name) = &e.suggest_folder {
+            if let Err(why) = validate_rename(name.trim()) {
+                problems.push(format!("{at}: suggest_folder: {why}"));
+            }
+        }
+
         if !(0.0..=1.0).contains(&e.confidence) || e.confidence.is_nan() {
             problems.push(format!(
                 "{at}: confidence {} is outside [0,1]",
@@ -328,6 +368,7 @@ mod tests {
             confidence,
             reason: "because".into(),
             suggest_rule: None,
+            suggest_folder: None,
         }
     }
 

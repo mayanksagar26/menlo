@@ -108,6 +108,15 @@ pub struct Settings {
     pub avatar: String,
     #[serde(default)]
     pub working_model: WorkingModel,
+    /// Which CLI agent drives the CLI Agent model: a preset id from
+    /// `harness::PRESETS` (`claude`, `codex`, …), `custom`, or empty for the first one
+    /// found on this Mac.
+    #[serde(default)]
+    pub cli_agent: String,
+    /// The command line for `custom`, e.g. `qwen -p` or `aichat`. Split on whitespace and
+    /// run directly — never through a shell — with the prompt on stdin.
+    #[serde(default)]
+    pub cli_command: String,
     #[serde(default)]
     pub schedule: Schedule,
     #[serde(default)]
@@ -142,6 +151,8 @@ impl Default for Settings {
             profile_name: String::new(),
             avatar: default_avatar(),
             working_model: WorkingModel::default(),
+            cli_agent: String::new(),
+            cli_command: String::new(),
             schedule: Schedule::default(),
             duplicates: DuplicatePolicy::default(),
             rename_unclear: true,
@@ -252,6 +263,34 @@ impl Config {
             .expect("an unbounded range always yields a free key")
     }
 
+    /// Add any subfolder of a top-level destination that exists on disk but not here —
+    /// one made in Finder since the folder was added. Returns whether anything changed.
+    pub fn sync_subfolders(&mut self, key: &str) -> bool {
+        let Some(parent) = self.destination(key).filter(|d| !d.is_subfolder()).cloned() else {
+            return false;
+        };
+        let mut changed = false;
+        for sub in existing_subfolders(&parent.path, 64) {
+            if self.destinations.iter().any(|d| d.path == sub) {
+                continue;
+            }
+            let label = sub
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let child_key = self.fresh_key(&label, Some(key));
+            self.destinations.push(Destination {
+                key: child_key,
+                label,
+                path: sub,
+                brief: String::new(),
+                parent: Some(key.to_string()),
+            });
+            changed = true;
+        }
+        changed
+    }
+
     /// Rejects a config the rest of the app would have to defend against anyway.
     pub fn validate(&self) -> Result<()> {
         let mut seen = std::collections::HashSet::new();
@@ -303,14 +342,8 @@ impl Config {
             }
         }
 
-        for src in &self.sources {
-            if let Some(d) = self.destinations.iter().find(|d| d.path == *src) {
-                return Err(Error::config(format!(
-                    "`{}` is both a source and a destination",
-                    d.label
-                )));
-            }
-        }
+        // A folder may be both a source and a destination: that is tidying it in
+        // place — its loose files go into its own subfolders (see `tidy`).
 
         for set in &self.folder_sets {
             for key in &set.destinations {
@@ -578,12 +611,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_destination_that_is_also_a_source() {
+    fn a_folder_can_be_tidied_in_place() {
         let c = Config::new(
             vec![PathBuf::from("/tmp/other"), PathBuf::from("/tmp/dl")],
             vec![dest("dl", "/tmp/dl")],
         );
-        assert!(c.validate().is_err());
+        assert!(c.validate().is_ok());
     }
 
     #[test]
