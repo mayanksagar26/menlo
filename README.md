@@ -33,8 +33,13 @@ landing before a single file moves. Every run can be undone.
 
 It works with **no AI at all**. Rules are read with ordinary matching — names, file
 types, dates, sizes — and Menlo tells you plainly when a rule needs a model to apply.
-A local model (Gemma, through Ollama) is next; a CLI agent like Claude Code will be an
-option, never a requirement.
+If you already use a coding CLI — Claude Code, Codex, Gemini CLI, opencode or any other —
+Menlo can ask it about the files your rules can't place. That is optional, never a
+requirement, and a local model (Gemma, through Ollama) is next.
+
+It can also **tidy a folder in place**: point it at Documents → Documents and it files
+the loose files into Documents' own subfolders, and suggests new subfolders for the
+ones nothing fits yet. Every decision you approve teaches it a rule for next time.
 
 ---
 
@@ -42,7 +47,9 @@ option, never a requirement.
 
 - [Install](#install) — download, with Claude Code, or from source
 - [How it works](#how-it-works)
+- [Tidying a folder in place](#tidying-a-folder-in-place)
 - [Writing rules](#writing-rules)
+- [How Menlo remembers](#how-menlo-remembers)
 - [Duplicates and renaming](#duplicates-and-renaming)
 - [Safety](#safety)
 - [Working models](#working-models)
@@ -132,7 +139,8 @@ A run is one pass through four stages. Nothing moves until the third.
 Pick the folders to clear and the folders things can land in. **Add folder** on either
 side takes any folder on your Mac. On first launch Menlo sets itself up from the folders
 you already have — Downloads and Desktop to clear; Documents, Pictures, Movies, Music and
-Developer to file into, with their existing subfolders.
+Developer to file into, with their existing subfolders. A folder can be on both sides at
+once — that tidies it in place (see [below](#tidying-a-folder-in-place)).
 
 ![Choose](docs/screenshots/choose.png)
 
@@ -152,7 +160,9 @@ byte, are raised first — keep them where they are, or send the extra copy to t
 
 ![Duplicates](docs/screenshots/duplicates.png)
 
-Then the preview: every landing, every new name, before anything happens.
+Then the preview: every landing, every new name, before anything happens. When Menlo
+thinks a group of files deserves a folder of its own, the preview offers it there — see
+[New folders](#new-folders).
 
 ![Preview](docs/screenshots/preview.png)
 
@@ -171,6 +181,36 @@ Every run is kept. Send back a whole run, one folder of it, or just what it put 
 Trash. A file you have edited since is left alone rather than overwritten.
 
 ![Runs](docs/screenshots/runs.png)
+
+---
+
+## Tidying a folder in place
+
+Add a folder as both a place to clear and a place to file into — Documents → Documents —
+and Menlo sorts the files lying loose in it:
+
+- **Into its own subfolders.** A loose `Contracts lease.pdf` goes into
+  Documents/Contracts, by your rules or by name. Subfolders you made in Finder since
+  adding the folder are picked up at the start of every run.
+- **Or somewhere better.** A photo sitting in Documents can still go to Pictures.
+- **Or nowhere.** A file nothing fits stays exactly where it is, marked *"Already in
+  Documents; none of its folders fit yet."* A file is never "moved" into the folder it is
+  already in.
+- Files already inside a subfolder are never touched — only the loose ones.
+
+### New folders
+
+What nothing fits yet is grouped, and each group is offered as a new subfolder in the
+preview, with **Create** and **Not now**:
+
+- **A word the names share** — three invoice PDFs → *Documents / Invoice*.
+- **A CLI agent's suggestion**, when you use one, for files it thinks belong together.
+- **A kind of file out of place** — three or more images loose in Documents →
+  *Documents / Images*.
+
+**Create** makes the folder and files the group into it. Nothing is created until you
+press it. A folder made from a shared word is also remembered as a rule, so next time
+those files go there on their own.
 
 ---
 
@@ -194,7 +234,12 @@ honest gap today: the most natural phrasing, like *"Invoices go here"* or *"Tax 
 has no cue word yet, so it waits for a model. Say *"anything named invoice"* instead,
 until that lands (see [Roadmap](#roadmap)).
 
-Rules Memory shows every rule, by folder, with what Menlo understood from it:
+**Rules memory** lists every folder in your home folder — Documents, Pictures, Movies,
+Music, Downloads, Desktop and the rest — with their subfolders inside. Main folders
+fold open and closed; folders Menlo already files into start open. Each folder shows the
+rules you wrote, what Menlo understood from each, and the rules it has learned. Writing
+a rule for a folder Menlo does not use yet adds it. The list is read from disk only while
+the page is open, and reading it changes nothing.
 
 ![Rules memory](docs/screenshots/rules.png)
 
@@ -203,6 +248,30 @@ agreement"* reaches Documents/Contracts even though the file is a PDF. A rule wi
 a date, size or age can only choose *between the subfolders of the folder a file is
 already going to*, so *"anything dated 2026"* on Documents/Invoices 2026 never pulls in
 your 2026 holiday photos.
+
+---
+
+## How Menlo remembers
+
+Every run you approve can teach Menlo a pattern rule — `the name matches *invoice*` →
+Documents/Invoices — which then files those files with no model and no question. A
+learned rule outranks the built-in type map, so a careless one would do real damage
+(*"every PDF → Finance"*, learned from one invoice). So each one is checked before it is
+kept:
+
+- **Too broad is refused.** A bare common type (`.pdf`, `.jpg`) or a pattern with no
+  distinctive word (`IMG_*`) is never learned.
+- **Your latest decision wins.** The same pattern approved into a different folder moves
+  the old rule rather than keeping two that disagree.
+- **No repeats.** A pattern an existing rule already catches is not added.
+- **Alike rules merge.** Three or more learned rules for one folder that share a word
+  fold into one: `Invoice_Aug*`, `Invoice_Sep*` and `invoice-2026*` become `*invoice*`.
+- **Shared words are noticed.** When a CLI agent places two or more files with the same
+  distinctive word in one folder and you approve them, that word becomes the rule.
+- Only moves you approved as proposed count; anything you leave unticked teaches nothing.
+
+Learned rules appear in Rules memory under **Learned from what you approved**, each with
+**Forget**.
 
 ---
 
@@ -243,9 +312,17 @@ run restores the original name.
   unless you opt in. Paths are checked after symlink resolution, and again right before
   each move.
 - **No network code.** The Rust core makes no network calls; CI fails the build if an
-  HTTP client is ever added to it.
+  HTTP client is ever added to it. A CLI agent you choose talks to its own provider, in
+  its own process — Menlo never does.
 - **A model can never name a path.** When one is used, it picks a folder *key* from a
-  list Menlo supplied; Menlo maps the key to a folder you added.
+  list Menlo supplied; Menlo maps the key to a folder you added. Its whole reply is
+  rejected if a single entry fails a check.
+- **A CLI agent sees names, never contents.** It is sent the names, types, sizes and dates
+  of the files your rules could not place — never file contents, never where they live.
+  Claude Code is run with every tool switched off. Any other CLI runs inside a macOS
+  sandbox (`sandbox-exec`) that blocks your home folder and other drives, apart from its
+  own settings and install folders — so a file named to trick it into opening `~/.ssh`
+  gets *Operation not permitted*.
 
 ---
 
@@ -261,6 +338,28 @@ Chosen in Settings.
 
 ![Settings](docs/screenshots/settings.png)
 
+### Using a CLI agent
+
+Choose **CLI Agent** in Settings and Menlo lists the CLIs it knows — Claude Code, Codex
+CLI, Gemini CLI, opencode, Qwen Code and Cursor Agent — with where each was found on
+this Mac. **Other command** takes any CLI that reads a prompt on standard input and
+prints its answer (e.g. `qwen -p`); it is run directly, never through a shell.
+**Check it works** sends a tiny test prompt with nothing about your files in it.
+
+On a run, your rules go first. Only what they could not place is sent, in batches, and
+the answers are folded into the preview:
+
+- A confident answer is ticked; a guess (below 70% confidence) is shown but left
+  unticked, so it stays put unless you tick it.
+- The preview says what the CLI did — *"Claude Code placed 12 of the 15 files the rules
+  couldn't"* — or why it could not run, in which case the plan is your rules' moves only.
+- Menlo finds CLIs installed through Homebrew, npm, bun or `~/.local/bin` even when it is
+  opened from the Dock, where macOS hides your terminal's `PATH`.
+
+Gemini CLI, opencode, Qwen Code and Cursor Agent are supported but have so far been
+tested less than Claude Code and Codex. If one needs a settings folder the sandbox does
+not open, the preview shows its error and the run falls back to your rules.
+
 ---
 
 ## Development
@@ -269,7 +368,7 @@ Chosen in Settings.
 npm install
 npm run tauri dev          # the app, with hot reload
 
-cargo test  --manifest-path src-tauri/Cargo.toml   # 134 Rust tests
+cargo test  --manifest-path src-tauri/Cargo.toml   # the Rust tests
 npm run typecheck && npm test                      # TypeScript + unit tests
 npm run test:e2e                                   # the whole flow in a browser
 ```
@@ -282,6 +381,10 @@ Worth knowing:
   checking every file's contents by hash.
 - **`e2e/`** runs the real window against a stubbed backend and asserts what it sends.
   `e2e/screens.spec.ts` also captures every screen into `test-results/screens/`.
+- **Live CLI tests** are opt-in, because they spend a real CLI's quota. They sort sample
+  files, and check the sandbox stops a CLI told to read a decoy in your home folder:
+  `MENLO_LIVE_AGENT=codex cargo test --manifest-path src-tauri/Cargo.toml --lib live -- --ignored`
+  (or `claude`).
 - The app icon and installer artwork are drawn in `design/brand/` and rendered by
   `design/brand/build.sh`. The results are committed, so a normal build needs nothing
   extra.
@@ -301,9 +404,10 @@ in [docs/design/](docs/design/HANDOFF.md).
   *"anything named invoice"*.
 - **A menu-bar agent** — scheduled runs and a notification when a run finishes. Both are
   in Settings already, switched off until this lands.
-- **Learning from your approvals** — every choice you confirm is labelled data. A small
-  decision model such as [Laya](https://laya.convaiinnovations.com/), fine-tuned on it,
-  could replace the model step entirely.
+- **A decision model trained on your approvals** — Menlo already turns approvals into
+  rules; every choice you confirm is also labelled data. A small decision model such as
+  [Laya](https://laya.convaiinnovations.com/), fine-tuned on it, could replace the model
+  step entirely.
 - **A notarised build**, so no right-click is needed on first open.
 
 ---
