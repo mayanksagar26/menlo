@@ -31,7 +31,9 @@ pub fn in_place<'a>(config: &'a Config, source: &Path) -> Option<&'a Destination
 /// Turn every "move into the folder it is already in" into "stays where it is".
 pub fn settle_in_place(plan: &mut Plan, scan: &Scan, config: &Config) {
     for e in plan.entries.iter_mut() {
-        let Some(item) = scan.get(&e.id) else { continue };
+        let Some(item) = scan.get(&e.id) else {
+            continue;
+        };
         let Some(home) = in_place(config, &item.source) else {
             continue;
         };
@@ -83,7 +85,9 @@ struct Candidate<'a> {
 pub fn propose(plan: &Plan, scan: &Scan, config: &Config) -> Vec<FolderProposal> {
     let mut pool: Vec<Candidate> = Vec::new();
     for e in &plan.entries {
-        let Some(item) = scan.get(&e.id) else { continue };
+        let Some(item) = scan.get(&e.id) else {
+            continue;
+        };
         let (parent, loose) = match (e.action, e.destination_key.as_deref()) {
             (Action::NeedsReview, _) => match in_place(config, &item.source) {
                 Some(home) if !home.is_subfolder() => (home, true),
@@ -126,7 +130,10 @@ pub fn propose(plan: &Plan, scan: &Scan, config: &Config) -> Vec<FolderProposal>
         if let Some(name) = &c.suggested {
             let name = name.trim().to_string();
             if crate::plan::validate_rename(&name).is_ok() {
-                suggested.entry((c.parent.key.clone(), name)).or_default().push(c);
+                suggested
+                    .entry((c.parent.key.clone(), name))
+                    .or_default()
+                    .push(c);
             }
         }
     }
@@ -136,7 +143,9 @@ pub fn propose(plan: &Plan, scan: &Scan, config: &Config) -> Vec<FolderProposal>
             continue;
         }
         // A rule only if the group shares a word the folder is named for.
-        let word = tokens(&name).into_iter().find(|w| group.iter().all(|c| tokens(c.name).contains(w)));
+        let word = tokens(&name)
+            .into_iter()
+            .find(|w| group.iter().all(|c| tokens(c.name).contains(w)));
         out.push(FolderProposal {
             parent_key: parent.key.clone(),
             name: name.clone(),
@@ -154,7 +163,10 @@ pub fn propose(plan: &Plan, scan: &Scan, config: &Config) -> Vec<FolderProposal>
             let parent_words = tokens(&c.parent.label);
             for t in tokens(c.name) {
                 if !parent_words.contains(&t) {
-                    counts.entry((c.parent.key.as_str(), t)).or_default().push(c);
+                    counts
+                        .entry((c.parent.key.as_str(), t))
+                        .or_default()
+                        .push(c);
                 }
             }
         }
@@ -162,7 +174,9 @@ pub fn propose(plan: &Plan, scan: &Scan, config: &Config) -> Vec<FolderProposal>
             .into_iter()
             .filter(|((_, w), g)| g.len() >= MIN_GROUP && !used(g[0].parent, &out, &title(w)))
             .max_by_key(|((_, w), g)| (g.len(), w.len()));
-        let Some(((_, word), group)) = best else { break };
+        let Some(((_, word), group)) = best else {
+            break;
+        };
         let parent = group[0].parent;
         out.push(FolderProposal {
             parent_key: parent.key.clone(),
@@ -181,7 +195,10 @@ pub fn propose(plan: &Plan, scan: &Scan, config: &Config) -> Vec<FolderProposal>
     for c in pool.iter().filter(|c| c.loose && !taken.contains(c.id)) {
         if let Some(cat) = category_of(c.ext) {
             if cat != c.parent.key {
-                kinds.entry((c.parent.key.as_str(), cat)).or_default().push(c);
+                kinds
+                    .entry((c.parent.key.as_str(), cat))
+                    .or_default()
+                    .push(c);
             }
         }
     }
@@ -200,7 +217,7 @@ pub fn propose(plan: &Plan, scan: &Scan, config: &Config) -> Vec<FolderProposal>
         });
     }
 
-    out.sort_by(|a, b| b.entry_ids.len().cmp(&a.entry_ids.len()));
+    out.sort_by_key(|p| std::cmp::Reverse(p.entry_ids.len()));
     out.truncate(MAX_PROPOSALS);
     out
 }
@@ -243,7 +260,10 @@ mod tests {
         settle_in_place(&mut plan, &scan, &config);
         let by = |n: &str| plan.entries.iter().find(|e| e.name == n).unwrap();
         // Named like a subfolder → into it.
-        assert_eq!(by("Contracts lease.pdf").destination_key.as_deref(), Some("documents-contracts"));
+        assert_eq!(
+            by("Contracts lease.pdf").destination_key.as_deref(),
+            Some("documents-contracts")
+        );
         // Nothing fits → stays put, not "moved" onto itself.
         assert_eq!(by("notes.pdf").action, Action::NeedsReview);
         assert!(by("notes.pdf").destination_key.is_none());
@@ -263,10 +283,16 @@ mod tests {
         let mut plan = build_plan(&scan, &config, &RuleSet::default());
         settle_in_place(&mut plan, &scan, &config);
         let props = propose(&plan, &scan, &config);
-        let invoices = props.iter().find(|p| p.name == "Invoice").expect("an Invoice folder");
+        let invoices = props
+            .iter()
+            .find(|p| p.name == "Invoice")
+            .expect("an Invoice folder");
         assert_eq!(invoices.entry_ids.len(), 3);
         assert_eq!(invoices.match_expr.as_deref(), Some("glob:*invoice*"));
-        let images = props.iter().find(|p| p.name == "Images").expect("an Images folder");
+        let images = props
+            .iter()
+            .find(|p| p.name == "Images")
+            .expect("an Images folder");
         assert_eq!(images.entry_ids.len(), 3);
         assert!(images.match_expr.is_none());
         assert!(!props.iter().any(|p| p.name == "Contracts"));

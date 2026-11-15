@@ -21,8 +21,8 @@ pub mod rename;
 pub mod rules;
 pub mod safety;
 pub mod scan;
-pub mod tidy;
 pub mod testutil;
+pub mod tidy;
 pub mod view;
 
 use config::{Config, Destination, FolderSet, Settings};
@@ -361,7 +361,12 @@ fn add_rule_at(path: PathBuf, text: String) -> Result<AppView> {
             let parent_dir = path.parent().map(std::path::Path::to_path_buf);
             let parent_dest = parent_dir
                 .as_ref()
-                .and_then(|pd| config.destinations.iter().find(|d| &d.path == pd && !d.is_subfolder()))
+                .and_then(|pd| {
+                    config
+                        .destinations
+                        .iter()
+                        .find(|d| &d.path == pd && !d.is_subfolder())
+                })
                 .map(|d| d.key.clone());
             match (parent_dest, parent_dir) {
                 // Inside a folder Menlo uses: a subfolder of it.

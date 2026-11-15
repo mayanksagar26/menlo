@@ -52,12 +52,36 @@ pub struct Preset {
 }
 
 pub const PRESETS: &[Preset] = &[
-    Preset { id: "claude", label: "Claude Code", bin: "claude" },
-    Preset { id: "codex", label: "Codex CLI", bin: "codex" },
-    Preset { id: "gemini", label: "Gemini CLI", bin: "gemini" },
-    Preset { id: "opencode", label: "opencode", bin: "opencode" },
-    Preset { id: "qwen", label: "Qwen Code", bin: "qwen" },
-    Preset { id: "cursor-agent", label: "Cursor Agent", bin: "cursor-agent" },
+    Preset {
+        id: "claude",
+        label: "Claude Code",
+        bin: "claude",
+    },
+    Preset {
+        id: "codex",
+        label: "Codex CLI",
+        bin: "codex",
+    },
+    Preset {
+        id: "gemini",
+        label: "Gemini CLI",
+        bin: "gemini",
+    },
+    Preset {
+        id: "opencode",
+        label: "opencode",
+        bin: "opencode",
+    },
+    Preset {
+        id: "qwen",
+        label: "Qwen Code",
+        bin: "qwen",
+    },
+    Preset {
+        id: "cursor-agent",
+        label: "Cursor Agent",
+        bin: "cursor-agent",
+    },
 ];
 
 pub const CUSTOM: &str = "custom";
@@ -181,7 +205,9 @@ pub fn resolve(settings: &Settings) -> Result<Resolved> {
             .next()
             .ok_or_else(|| Error::config("enter the command for your CLI agent in Settings"))?;
         let path = which(program).ok_or_else(|| {
-            Error::config(format!("couldn't find `{program}` — is it installed and on your PATH?"))
+            Error::config(format!(
+                "couldn't find `{program}` — is it installed and on your PATH?"
+            ))
         })?;
         return Ok(Resolved {
             id: CUSTOM.into(),
@@ -301,7 +327,11 @@ pub fn ask(agent: &Resolved, prompt: &str) -> Result<String> {
             .env("PATH", search_path())
             .env("NO_COLOR", "1")
             .env("TERM", "dumb")
-            .stdin(if stdin_prompt { Stdio::piped() } else { Stdio::null() })
+            .stdin(if stdin_prompt {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -325,8 +355,15 @@ pub fn ask(agent: &Resolved, prompt: &str) -> Result<String> {
             ))
         })?;
         if !out.success {
-            let why = first_line(if out.stderr.trim().is_empty() { &out.stdout } else { &out.stderr });
-            return Err(Error::config(format!("{} stopped with an error: {why}", agent.label)));
+            let why = first_line(if out.stderr.trim().is_empty() {
+                &out.stdout
+            } else {
+                &out.stderr
+            });
+            return Err(Error::config(format!(
+                "{} stopped with an error: {why}",
+                agent.label
+            )));
         }
 
         match agent.id.as_str() {
@@ -352,8 +389,12 @@ fn claude_result(stdout: &str, label: &str) -> Result<String> {
         #[serde(default)]
         is_error: bool,
     }
-    let env: Envelope = serde_json::from_str(stdout.trim())
-        .map_err(|_| Error::config(format!("{label} replied in an unexpected format: {}", first_line(stdout))))?;
+    let env: Envelope = serde_json::from_str(stdout.trim()).map_err(|_| {
+        Error::config(format!(
+            "{label} replied in an unexpected format: {}",
+            first_line(stdout)
+        ))
+    })?;
     let text = env.result.unwrap_or_default();
     if env.is_error {
         return Err(Error::config(format!("{label}: {}", first_line(&text))));
@@ -388,7 +429,10 @@ fn wait_with_timeout(child: &mut std::process::Child, limit: Duration) -> std::i
         if start.elapsed() > limit {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "timed out",
+            ));
         }
         std::thread::sleep(Duration::from_millis(100));
     };
@@ -411,8 +455,22 @@ fn home_dir() -> Option<PathBuf> {
 /// Home folders that hold the user's own things. Never opened up to a CLI, even if a
 /// PATH entry happens to live inside one.
 const PRIVATE: &[&str] = &[
-    "Desktop", "Documents", "Downloads", "Library", "Movies", "Music", "Pictures", "Public",
-    ".ssh", ".aws", ".gnupg", ".config", ".kube", ".docker", ".netrc", "Applications",
+    "Desktop",
+    "Documents",
+    "Downloads",
+    "Library",
+    "Movies",
+    "Music",
+    "Pictures",
+    "Public",
+    ".ssh",
+    ".aws",
+    ".gnupg",
+    ".config",
+    ".kube",
+    ".docker",
+    ".netrc",
+    "Applications",
 ];
 
 /// The folders under home a CLI may read and write: its config, and wherever it and
@@ -445,15 +503,22 @@ fn sandbox_allowances(agent: &Resolved, home: &Path) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = config.iter().map(|c| home.join(c)).collect();
 
     // Install locations, from PATH and from where the program really lives.
-    let program = agent.program.canonicalize().unwrap_or_else(|_| agent.program.clone());
+    let program = agent
+        .program
+        .canonicalize()
+        .unwrap_or_else(|_| agent.program.clone());
     let installs = search_path()
         .split(':')
         .map(PathBuf::from)
         .chain([agent.program.clone(), program]);
     for p in installs {
         let p = p.canonicalize().unwrap_or(p);
-        let Ok(rest) = p.strip_prefix(home) else { continue };
-        let Some(top) = rest.components().next() else { continue };
+        let Ok(rest) = p.strip_prefix(home) else {
+            continue;
+        };
+        let Some(top) = rest.components().next() else {
+            continue;
+        };
         let top = top.as_os_str().to_string_lossy().to_string();
         if !PRIVATE.contains(&top.as_str()) {
             out.push(home.join(top));
@@ -479,7 +544,10 @@ pub fn sandbox_profile(home: &Path, allow: &[PathBuf]) -> String {
     ));
     p.push_str("(allow file-read-metadata)\n");
     for a in allow {
-        p.push_str(&format!("(allow file-read* file-write* (subpath {}))\n", quote(a)));
+        p.push_str(&format!(
+            "(allow file-read* file-write* (subpath {}))\n",
+            quote(a)
+        ));
     }
     p
 }
@@ -512,7 +580,11 @@ pub fn briefs(config: &Config, ruleset: &RuleSet) -> Vec<Brief> {
             if !d.brief.trim().is_empty() {
                 rules.push(d.brief.clone());
             }
-            Brief { key: d.key.clone(), label, rules }
+            Brief {
+                key: d.key.clone(),
+                label,
+                rules,
+            }
         })
         .collect()
 }
@@ -604,7 +676,12 @@ Example of a well-formed reply:
 /// Send every file the rules left unplaced to the CLI, and fold its answers into the
 /// plan. On failure the plan is left exactly as the rules made it and the error says
 /// why; the caller decides how to tell the user.
-pub fn classify(plan: &mut Plan, scan: &Scan, config: &Config, ruleset: &RuleSet) -> Result<Outcome> {
+pub fn classify(
+    plan: &mut Plan,
+    scan: &Scan,
+    config: &Config,
+    ruleset: &RuleSet,
+) -> Result<Outcome> {
     let agent = resolve(&config.settings)?;
     let residue: Vec<&ManifestEntry> = plan
         .entries
@@ -613,7 +690,12 @@ pub fn classify(plan: &mut Plan, scan: &Scan, config: &Config, ruleset: &RuleSet
         .filter_map(|e| scan.get(&e.id).map(|i| &i.entry))
         .collect();
     if residue.is_empty() || config.destinations.is_empty() {
-        return Ok(Outcome { agent: agent.label, asked: 0, placed: 0, unsure: 0 });
+        return Ok(Outcome {
+            agent: agent.label,
+            asked: 0,
+            placed: 0,
+            unsure: 0,
+        });
     }
 
     let briefs = briefs(config, ruleset);
@@ -645,7 +727,11 @@ pub fn classify(plan: &mut Plan, scan: &Scan, config: &Config, ruleset: &RuleSet
                 .collect();
             handles
                 .into_iter()
-                .map(|h| h.join().unwrap_or_else(|_| Err(Error::config("the CLI worker stopped unexpectedly"))))
+                .map(|h| {
+                    h.join().unwrap_or_else(|_| {
+                        Err(Error::config("the CLI worker stopped unexpectedly"))
+                    })
+                })
                 .collect()
         });
         for r in results {
@@ -685,7 +771,12 @@ pub fn classify(plan: &mut Plan, scan: &Scan, config: &Config, ruleset: &RuleSet
         });
     }
     plan.prompt_version = Some(PROMPT_VERSION.into());
-    Ok(Outcome { agent: agent.label, asked: residue.len(), placed, unsure })
+    Ok(Outcome {
+        agent: agent.label,
+        asked: residue.len(),
+        placed,
+        unsure,
+    })
 }
 
 /// What the CLI pass did, for the note on the plan.
@@ -711,8 +802,13 @@ fn ask_chunk(
     let allowed: HashSet<&str> = files.iter().map(|f| f.id.as_str()).collect();
     let attempt = || -> Result<Vec<RawPlanEntry>> {
         let reply = ask(agent, &text)?;
-        let raw = plan::parse_raw(&reply)
-            .map_err(|_| Error::Validation(vec![format!("{} replied with malformed JSON: {}", agent.label, first_line(&reply))]))?;
+        let raw = plan::parse_raw(&reply).map_err(|_| {
+            Error::Validation(vec![format!(
+                "{} replied with malformed JSON: {}",
+                agent.label,
+                first_line(&reply)
+            )])
+        })?;
         plan::validate(&raw, scan, keys)?;
         // An id from the scan but outside this chunk is still not one we asked about.
         let strays: Vec<String> = raw
@@ -742,7 +838,11 @@ pub fn test(settings: &Settings) -> Result<String> {
     )?;
     let body = plan::strip_fences(&reply);
     serde_json::from_str::<serde_json::Value>(body).map_err(|_| {
-        Error::config(format!("{} answered, but not with JSON: {}", agent.label, first_line(&reply)))
+        Error::config(format!(
+            "{} answered, but not with JSON: {}",
+            agent.label,
+            first_line(&reply)
+        ))
     })?;
     Ok(format!(
         "{} answered in {:.1}s — ready to sort.",
@@ -824,7 +924,9 @@ mod tests {
         };
         let allowed = sandbox_allowances(&agent, &home);
         assert!(allowed.contains(&home.join(".codex")));
-        assert!(!allowed.iter().any(|p| p.starts_with(home.join("Documents"))));
+        assert!(!allowed
+            .iter()
+            .any(|p| p.starts_with(home.join("Documents"))));
     }
 
     #[test]
@@ -853,7 +955,10 @@ mod live {
         let canary = home.join(".menlo-canary-direct");
         let secret = format!("CANARY-{}", uuid::Uuid::new_v4().simple());
         std::fs::write(&canary, &secret).unwrap();
-        let settings = Settings { cli_agent: agent, ..Settings::default() };
+        let settings = Settings {
+            cli_agent: agent,
+            ..Settings::default()
+        };
         let resolved = resolve(&settings).unwrap();
         let reply = ask(
             &resolved,
@@ -914,7 +1019,12 @@ mod live {
     fn live_agent_sorts_the_residue() {
         let agent = std::env::var("MENLO_LIVE_AGENT").unwrap_or_else(|_| "claude".into());
         let tmp = TempDir::new();
-        for n in ["Lease_Agreement_Indiranagar.pdf", "electricity_bill_oct.pdf", "boarding-pass-BLR-DEL.pdf", "zzq.bin"] {
+        for n in [
+            "Lease_Agreement_Indiranagar.pdf",
+            "electricity_bill_oct.pdf",
+            "boarding-pass-BLR-DEL.pdf",
+            "zzq.bin",
+        ] {
             tmp.write(n, b"x");
         }
         let scan = crate::scan::scan(tmp.path()).unwrap();
@@ -937,7 +1047,10 @@ mod live {
         }
         let out = classify(&mut plan, &scan, &config, &ruleset).unwrap();
         for e in &plan.entries {
-            eprintln!("{:40} {:?} {:?} {:.2} {}", e.name, e.action, e.destination_key, e.confidence, e.reason);
+            eprintln!(
+                "{:40} {:?} {:?} {:.2} {}",
+                e.name, e.action, e.destination_key, e.confidence, e.reason
+            );
         }
         assert_eq!(out.asked, 4);
         assert!(out.placed >= 2, "placed only {}", out.placed);

@@ -52,11 +52,22 @@ const SKIP_IN_HOME: &[&str] = &[
 /// Menlo files into that lives elsewhere.
 pub fn device_folders(config: &Config) -> Result<Vec<DeviceFolder>> {
     let home = config::home()?;
-    let key_of = |p: &Path| config.destinations.iter().find(|d| d.path == p).map(|d| d.key.clone());
+    let key_of = |p: &Path| {
+        config
+            .destinations
+            .iter()
+            .find(|d| d.path == p)
+            .map(|d| d.key.clone())
+    };
     let node = |p: PathBuf| -> DeviceFolder {
         let mut children: Vec<DeviceFolder> = config::existing_subfolders(&p, 500)
             .into_iter()
-            .map(|c| DeviceFolder { label: label_of(&c), key: key_of(&c), path: c, children: Vec::new() })
+            .map(|c| DeviceFolder {
+                label: label_of(&c),
+                key: key_of(&c),
+                path: c,
+                children: Vec::new(),
+            })
             .collect();
         // A subfolder Menlo knows about but which has gone from disk still shows, so
         // its rules can be seen and removed.
@@ -73,7 +84,12 @@ pub fn device_folders(config: &Config) -> Result<Vec<DeviceFolder>> {
             }
         }
         children.sort_by_key(|c| c.label.to_lowercase());
-        DeviceFolder { label: label_of(&p), key: key_of(&p), path: p, children }
+        DeviceFolder {
+            label: label_of(&p),
+            key: key_of(&p),
+            path: p,
+            children,
+        }
     };
 
     let mut tops: Vec<DeviceFolder> = config::existing_subfolders(&home, 500)

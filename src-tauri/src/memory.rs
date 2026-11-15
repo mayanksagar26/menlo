@@ -22,15 +22,98 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Words that say nothing about what a file is.
 const GENERIC: &[&str] = &[
-    "img", "image", "images", "photo", "pic", "screenshot", "screen", "shot", "scan", "scanned",
-    "copy", "final", "draft", "new", "old", "file", "files", "document", "doc", "docs",
-    "untitled", "download", "downloads", "export", "edited", "version", "ver", "rev", "the",
-    "and", "for", "with", "from", "page", "pages", "part", "temp", "tmp", "test", "jan", "feb",
-    "mar", "apr", "may", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "january",
-    "february", "march", "april", "june", "july", "august", "september", "october",
-    "november", "december", "mon", "tue", "wed", "thu", "fri", "sat", "sun", "pdf", "jpg",
-    "jpeg", "png", "heic", "mov", "mp4", "zip", "dmg", "txt", "docx", "xlsx", "csv", "pptx",
-    "whatsapp", "at", "am", "pm", "of", "in", "on", "to",
+    "img",
+    "image",
+    "images",
+    "photo",
+    "pic",
+    "screenshot",
+    "screen",
+    "shot",
+    "scan",
+    "scanned",
+    "copy",
+    "final",
+    "draft",
+    "new",
+    "old",
+    "file",
+    "files",
+    "document",
+    "doc",
+    "docs",
+    "untitled",
+    "download",
+    "downloads",
+    "export",
+    "edited",
+    "version",
+    "ver",
+    "rev",
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "page",
+    "pages",
+    "part",
+    "temp",
+    "tmp",
+    "test",
+    "jan",
+    "feb",
+    "mar",
+    "apr",
+    "may",
+    "jun",
+    "jul",
+    "aug",
+    "sep",
+    "sept",
+    "oct",
+    "nov",
+    "dec",
+    "january",
+    "february",
+    "march",
+    "april",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+    "mon",
+    "tue",
+    "wed",
+    "thu",
+    "fri",
+    "sat",
+    "sun",
+    "pdf",
+    "jpg",
+    "jpeg",
+    "png",
+    "heic",
+    "mov",
+    "mp4",
+    "zip",
+    "dmg",
+    "txt",
+    "docx",
+    "xlsx",
+    "csv",
+    "pptx",
+    "whatsapp",
+    "at",
+    "am",
+    "pm",
+    "of",
+    "in",
+    "on",
+    "to",
 ];
 
 /// Distinctive words in a filename: letters only, three or more of them, lowercased,
@@ -69,12 +152,17 @@ pub fn tokens(name: &str) -> Vec<String> {
 }
 
 fn is_common_ext(ext: &str) -> bool {
-    BUILTIN_CATEGORIES.iter().any(|(_, exts)| exts.contains(&ext))
+    BUILTIN_CATEGORIES
+        .iter()
+        .any(|(_, exts)| exts.contains(&ext))
 }
 
 /// The literal text of a glob, with its wildcards taken out.
 fn glob_core(pattern: &str) -> String {
-    pattern.chars().filter(|c| !matches!(c, '*' | '?' | '[' | ']' | '!')).collect()
+    pattern
+        .chars()
+        .filter(|c| !matches!(c, '*' | '?' | '[' | ']' | '!'))
+        .collect()
 }
 
 /// One spelling per idea, or `None` for a pattern that does not parse.
@@ -191,9 +279,18 @@ fn generalise(set: &mut RuleSet, dest: &str) -> Option<Rule> {
         .filter(|(_, toks)| toks.contains(&word))
         .map(|(id, _)| id.clone())
         .collect();
-    let hits: u64 = set.rules.iter().filter(|r| folded.contains(&r.id)).map(|r| r.hits).sum();
+    let hits: u64 = set
+        .rules
+        .iter()
+        .filter(|r| folded.contains(&r.id))
+        .map(|r| r.hits)
+        .sum();
     set.rules.retain(|r| !folded.contains(&r.id));
-    if set.rules.iter().any(|r| r.match_expr == general && r.destination_key == dest) {
+    if set
+        .rules
+        .iter()
+        .any(|r| r.match_expr == general && r.destination_key == dest)
+    {
         return None;
     }
     let mut rule = Rule::new(general, dest, RuleSource::Learned);
@@ -237,9 +334,15 @@ pub fn learn_from_approved(plan: &Plan, set: &mut RuleSet) -> Vec<Rule> {
     // Words shared by model-placed files with no suggestion of their own.
     let mut by_word: HashMap<String, HashMap<String, usize>> = HashMap::new();
     for e in &approved {
-        let Some(dest) = &e.destination_key else { continue };
+        let Some(dest) = &e.destination_key else {
+            continue;
+        };
         for t in tokens(&e.name) {
-            *by_word.entry(t).or_default().entry(dest.clone()).or_default() +=
+            *by_word
+                .entry(t)
+                .or_default()
+                .entry(dest.clone())
+                .or_default() +=
                 usize::from(e.resolved_by == ResolvedBy::Llm && e.suggest_rule.is_none());
         }
     }
@@ -253,7 +356,10 @@ pub fn learn_from_approved(plan: &Plan, set: &mut RuleSet) -> Vec<Rule> {
         .collect();
     words.sort();
     for (word, dest) in words {
-        keep(remember(set, &format!("glob:*{word}*"), &dest), &mut changed);
+        keep(
+            remember(set, &format!("glob:*{word}*"), &dest),
+            &mut changed,
+        );
     }
 
     // Report only what is still in the set: a rule may have been folded away.
@@ -268,16 +374,25 @@ mod tests {
     #[test]
     fn tokens_find_the_words_that_matter() {
         assert_eq!(tokens("Invoice_Aug2026.pdf"), vec!["invoice"]);
-        assert_eq!(tokens("HDFCBankStatement-03.pdf"), vec!["hdfcbank", "statement"]);
+        assert_eq!(
+            tokens("HDFCBankStatement-03.pdf"),
+            vec!["hdfcbank", "statement"]
+        );
         assert!(tokens("IMG_4821.jpg").is_empty());
         assert!(tokens("Screenshot 2026-11-03 at 10.22.01.png").is_empty());
-        assert_eq!(tokens("lease agreement (final).docx"), vec!["lease", "agreement"]);
+        assert_eq!(
+            tokens("lease agreement (final).docx"),
+            vec!["lease", "agreement"]
+        );
     }
 
     #[test]
     fn normalises_and_refuses_broad_rules() {
         assert_eq!(normalise("glob:*.PDF").as_deref(), Some("ext:pdf"));
-        assert_eq!(normalise("glob:Invoice_*").as_deref(), Some("glob:invoice_*"));
+        assert_eq!(
+            normalise("glob:Invoice_*").as_deref(),
+            Some("glob:invoice_*")
+        );
         assert!(too_broad("ext:pdf"));
         assert!(!too_broad("ext:dwg"));
         assert!(too_broad("glob:IMG_*"));
