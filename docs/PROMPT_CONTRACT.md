@@ -4,8 +4,9 @@ The exact interface between Menlo and whichever agentic CLI is driving it.
 
 > **Status.** The JSON Schemas and the safety rules below are implemented and enforced
 > today (`src-tauri/src/scan.rs`, `src-tauri/src/plan.rs`). The prompt template in §4 is
-> the Phase 2 target and is not yet wired to a CLI — `harness/` does not exist yet. The
-> schemas will not change when it lands; that is the point of writing them down first.
+> wired to the CLI Agent working model in `src-tauri/src/harness/` (version `menlo/v1`,
+> which also carries `suggest_folder` and the list of files loose in a folder being
+> tidied in place).
 
 ---
 
@@ -16,7 +17,12 @@ scan folder  →  MANIFEST (json)  →  CLI  →  PLAN (json)  →  validate  �
 ```
 
 The CLI is invoked in headless/print mode as a **pure classifier**. It receives text and
-returns text. It gets no tools, no shell, and no write access. Every filesystem mutation
+returns text. Claude Code is run with no tools at all. CLIs that cannot switch
+their tools off (Codex, Gemini CLI, opencode, Cursor Agent, custom commands) run under
+`sandbox-exec` with a profile that denies reading or writing the home folder and
+`/Volumes`, except the CLI's own config and install folders — so a file named to
+trick the model into opening `~/.ssh` gets "Operation not permitted". Either way it
+has no write access to anything Menlo files. Every filesystem mutation
 happens in Rust, behind validation. This is not a defence-in-depth nicety — it is the
 reason the app can be trusted with a folder at all.
 

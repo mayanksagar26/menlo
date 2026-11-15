@@ -302,7 +302,8 @@ function CliAgentPicker() {
     <div className="glass mt-3 rounded-[14px] p-3.5">
       <p className="m-0 mb-2.5 text-[11.5px] text-ink-60">
         Which CLI to use. Only files your rules can't place are sent — their names, types, sizes and dates, never
-        their contents or where they live.
+        their contents or where they live. Claude Code runs with its tools off; the others run sandboxed, unable
+        to open anything in your home folder except their own settings.
       </p>
       {agents === null ? (
         <p className="m-0 text-[11.5px] text-ink-60">Looking for CLI agents on this Mac…</p>

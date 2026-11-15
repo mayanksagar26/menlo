@@ -257,7 +257,7 @@ Chosen in Settings.
 |---|---|---|
 | **Fully Local** | Ordinary matching and the rules you write. No model, no network. | **Works today** |
 | **Gemma** | A local Gemma reads each file and applies the rules plain matching cannot, through Ollama on this Mac. | Next |
-| **CLI Agent** | Claude Code, Codex or another CLI agent you already have, as a classifier only. | Later, optional |
+| **CLI Agent** | Claude Code, Codex, Gemini CLI, opencode or any other CLI agent you already have, asked only about files the rules can't place. Claude Code runs with tools off; the others run in a macOS sandbox that keeps them out of your home folder. | Works today, optional |
 
 ![Settings](docs/screenshots/settings.png)
 

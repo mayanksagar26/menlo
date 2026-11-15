@@ -82,7 +82,7 @@ export const MODELS: {
     when: "Works today",
     ready: true,
     selectable: true,
-    body: "Claude Code, Codex, Gemini CLI, opencode or any other CLI agent you already have, driven in headless mode for the files your rules can't place: names and types in, a plan out — no tools and no access to your files.",
+    body: "Claude Code, Codex, Gemini CLI, opencode or any other CLI agent you already have, asked only about the files your rules can't place: their names and types go in, a plan comes out. Claude Code runs with its tools switched off; any other CLI runs in a macOS sandbox that keeps it out of your home folder and other drives.",
     gains: "Nothing extra to install if you already code with one. Menlo never needs it — it is an alternative to Gemma, not a requirement.",
   },
   {
