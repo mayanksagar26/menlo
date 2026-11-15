@@ -66,7 +66,7 @@ ones nothing fits yet. Every decision you approve teaches it a rule for next tim
 
 ### Download
 
-1. Download **`Menlo_0.1.0_aarch64.dmg`** from the
+1. Download **`Menlo_0.2.0_aarch64.dmg`** from the
    [latest release](https://github.com/mayanksagar26/menlo/releases/latest).
 2. Open it and drag **Menlo** onto **Applications**.
 3. Open Menlo. The first time, macOS will stop it, because this build is signed ad-hoc
@@ -123,7 +123,7 @@ git clone https://github.com/mayanksagar26/menlo.git
 cd menlo
 npm install
 npm run tauri build
-open src-tauri/target/release/bundle/dmg/Menlo_0.1.0_*.dmg
+open src-tauri/target/release/bundle/dmg/Menlo_0.2.0_*.dmg
 ```
 
 To run it without building an app, use `npm run tauri dev`.

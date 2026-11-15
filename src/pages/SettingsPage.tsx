@@ -168,7 +168,7 @@ export function SettingsPage() {
 
         <Section index={3} refs={sections} title="About" onEnter={setActive}>
           <p className="m-0 text-[12.5px] leading-[1.7] text-ink-70">
-            Menlo 0.1 — created by Mayank Sagar. Everything happens on this Mac: folders are read here, plans are
+            Menlo 0.2 — created by Mayank Sagar. Everything happens on this Mac: folders are read here, plans are
             made here, and no file or filename leaves the device. Every move is journalled and can be sent back.
           </p>
         </Section>
